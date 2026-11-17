@@ -1,0 +1,63 @@
+# Windows 版自动编译 + 自测：编译、离屏渲染字幕、对着记事本窗口播放并截图
+name: windows-test
+on:
+  push:
+    branches: [windows]
+    paths: ['claude/windows/**', '.github/workflows/windows.yml']
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+      - name: 视频转 H.264
+        run: |
+          choco install ffmpeg -y --no-progress | Out-Null
+          $env:Path += ";C:\ProgramData\chocolatey\bin"
+          ffmpeg -v error -y -i claude\assets\intro.mp4 -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -c:a copy claude\windows\assets\intro.mp4
+          ffmpeg -v error -y -i claude\assets\loop.mp4 -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -an claude\windows\assets\loop.mp4
+          Get-ChildItem claude\windows\assets
+      - name: 媒体组件（服务器版 Windows 默认没装）
+        continue-on-error: true
+        run: |
+          Install-WindowsFeature Server-Media-Foundation | Format-List
+      - name: 编译
+        run: powershell -ExecutionPolicy Bypass -File claude\windows\build.ps1 -Out "$pwd\build"
+      - name: 离屏渲染字幕
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Start-Process build\ClaudeBootAnimation.exe -ArgumentList "--render-subtitle `"$pwd\claude\docs\preview.jpg`" `"$pwd\out\sub1.png`" 1" -Wait
+          Start-Process build\ClaudeBootAnimation.exe -ArgumentList "--render-subtitle `"$pwd\claude\docs\preview.jpg`" `"$pwd\out\sub2.png`" 2" -Wait
+          Get-ChildItem out
+      - name: 对着记事本播放开屏（完整）
+        run: |
+          $np = Start-Process notepad -WindowStyle Maximized -PassThru
+          Start-Sleep 3
+          Start-Process build\ClaudeBootAnimation.exe -ArgumentList "--target-title Notepad --play intro --exit-after 27 --shot-at 1,5,9,11.5,14,21,23.5,26 --shot-dir `"$pwd\out\intro`"" -Wait
+          Stop-Process $np -Force
+      - name: 跳过开屏
+        run: |
+          $np = Start-Process notepad -WindowStyle Maximized -PassThru
+          Start-Sleep 3
+          Start-Process build\ClaudeBootAnimation.exe -ArgumentList "--target-title Notepad --play intro --test-skip 3 --exit-after 8 --shot-at 2.5,3.4,4.5,7 --shot-dir `"$pwd\out\skip`"" -Wait
+          Stop-Process $np -Force
+      - name: 只开循环背景
+        run: |
+          $np = Start-Process notepad -WindowStyle Maximized -PassThru
+          Start-Sleep 3
+          Start-Process build\ClaudeBootAnimation.exe -ArgumentList "--target-title Notepad --play loop --exit-after 14 --shot-at 2,6,12 --shot-dir `"$pwd\out\loop`"" -Wait
+          Stop-Process $np -Force
+      - name: 收集日志
+        if: always()
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item "$env:LOCALAPPDATA\ClaudeBootAnimation\log.txt" out\ -ErrorAction SilentlyContinue
+          Get-Content out\log.txt -ErrorAction SilentlyContinue
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-test
+          path: out
