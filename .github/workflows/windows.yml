@@ -10,6 +10,7 @@ permissions:
 jobs:
   test:
     runs-on: windows-latest
+    timeout-minutes: 15
     defaults:
       run:
         shell: powershell
@@ -38,19 +39,22 @@ jobs:
         run: |
           $np = Start-Process notepad -WindowStyle Maximized -PassThru
           Start-Sleep 3
-          Start-Process build\ClaudeBootAnimation.exe -ArgumentList "--target-title Notepad --play intro --exit-after 27 --shot-at 1,5,9,11.5,14,21,23.5,26 --shot-dir `"$pwd\out\intro`"" -Wait
+          $app = Start-Process build\ClaudeBootAnimation.exe -PassThru -ArgumentList "--target-title Notepad --play intro --exit-after 27 --shot-at 1,5,9,11.5,14,21,23.5,26 --shot-dir `"$pwd\out\intro`"" 
+          $app | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue; $app | Stop-Process -Force -ErrorAction SilentlyContinue
           Stop-Process $np -Force
       - name: 跳过开屏
         run: |
           $np = Start-Process notepad -WindowStyle Maximized -PassThru
           Start-Sleep 3
-          Start-Process build\ClaudeBootAnimation.exe -ArgumentList "--target-title Notepad --play intro --test-skip 3 --exit-after 8 --shot-at 2.5,3.4,4.5,7 --shot-dir `"$pwd\out\skip`"" -Wait
+          $app = Start-Process build\ClaudeBootAnimation.exe -PassThru -ArgumentList "--target-title Notepad --play intro --test-skip 3 --exit-after 8 --shot-at 2.5,3.4,4.5,7 --shot-dir `"$pwd\out\skip`"" 
+          $app | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue; $app | Stop-Process -Force -ErrorAction SilentlyContinue
           Stop-Process $np -Force
       - name: 只开循环背景
         run: |
           $np = Start-Process notepad -WindowStyle Maximized -PassThru
           Start-Sleep 3
-          Start-Process build\ClaudeBootAnimation.exe -ArgumentList "--target-title Notepad --play loop --exit-after 14 --shot-at 2,6,12 --shot-dir `"$pwd\out\loop`"" -Wait
+          $app = Start-Process build\ClaudeBootAnimation.exe -PassThru -ArgumentList "--target-title Notepad --play loop --exit-after 14 --shot-at 2,6,12 --shot-dir `"$pwd\out\loop`"" 
+          $app | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue; $app | Stop-Process -Force -ErrorAction SilentlyContinue
           Stop-Process $np -Force
       - name: 收集日志
         if: always()

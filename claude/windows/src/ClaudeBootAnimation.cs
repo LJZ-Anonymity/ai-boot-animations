@@ -188,6 +188,9 @@ namespace ClaudeBootAnimation
         [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
         [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
         [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT p);
+        [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr h);
+        [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr h, IntPtr dc);
+        [DllImport("gdi32.dll")] public static extern bool BitBlt(IntPtr dst, int x, int y, int w, int h, IntPtr src, int sx, int sy, int rop);
         [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint flags);
         [DllImport("user32.dll", EntryPoint = "GetWindowLong")] static extern int GetWindowLong32(IntPtr h, int i);
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")] static extern IntPtr GetWindowLongPtr64(IntPtr h, int i);
@@ -701,7 +704,11 @@ namespace ClaudeBootAnimation
             using (var bmp = new SD.Bitmap(w, h))
             {
                 using (var g = SD.Graphics.FromImage(bmp))
-                    g.CopyFromScreen(r.Left, r.Top, 0, 0, new SD.Size(w, h), SD.CopyPixelOperation.SourceCopy | SD.CopyPixelOperation.CaptureBlt);
+                {
+                    IntPtr dst = g.GetHdc(), src = Native.GetDC(IntPtr.Zero);
+                    Native.BitBlt(dst, 0, 0, w, h, src, r.Left, r.Top, 0x00CC0020 | 0x40000000); // SRCCOPY | CAPTUREBLT：分层窗口也拍进去
+                    Native.ReleaseDC(IntPtr.Zero, src); g.ReleaseHdc(dst);
+                }
                 bmp.Save(path, SD.Imaging.ImageFormat.Png);
             }
             // 点击穿透检查：窗口中心这一点，鼠标点下去会落到哪个窗口
@@ -1087,9 +1094,13 @@ namespace ClaudeBootAnimation
                 for (int i = pending.Count - 1; i >= 0; i--)
                     if (el >= pending[i] && show != null && shotDir != null)
                     {
-                        Directory.CreateDirectory(shotDir);
-                        show.Snapshot(Path.Combine(shotDir, "shot_" + pending[i].ToString("00.0", CultureInfo.InvariantCulture) + ".png"));
-                        pending.RemoveAt(i);
+                        double at = pending[i]; pending.RemoveAt(i);
+                        try
+                        {
+                            Directory.CreateDirectory(shotDir);
+                            show.Snapshot(Path.Combine(shotDir, "shot_" + at.ToString("00.0", CultureInfo.InvariantCulture) + ".png"));
+                        }
+                        catch (Exception ex) { Log.W("截图失败：" + ex.Message); }
                     }
                 if (el >= exitAfter) { timer.Stop(); if (show != null) show.Teardown(); Log.W("测试结束"); Quit(); }
             };
