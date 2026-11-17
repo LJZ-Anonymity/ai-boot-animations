@@ -9,7 +9,7 @@
 - 🎬 **开屏动画**：金色线稿 → 上色 → 睁眼、剑光、火凤、烟花，带音效和英文花体字幕
 - 🌙 **循环背景**：开屏结束后半透明循环播放，点击直接穿透到 Claude，不影响使用
 - ⏭ **跳过**：开屏时右上角有「跳过」，点了会淡出接到循环背景
-- ✨ **菜单栏随时调**：开屏开关、循环背景开关、背景不透明度、开屏音量、背景音量，拖滑块实时生效（[详细说明](#菜单栏--能干什么)）
+- ✨ **菜单栏随时调**：开屏开关、循环背景开关、背景不透明度、开屏音量，拖滑块实时生效（[详细说明](#菜单栏--能干什么)）
 - 🧼 **不改 Claude 本体**：它是一个独立的小程序，盖在 Claude 窗口上播放；Claude 自动更新、签名、权限都不受影响，卸载后什么都不留
 
 > 非官方同人项目，与 Anthropic 无关。Claude 是 Anthropic 的商标。
@@ -47,11 +47,10 @@ cd ai-boot-animations/claude
 | ❌ | ✅ | 不放开屏，Claude 一打开就直接有动态背景 |
 | ❌ | ❌ | 原装启动，什么都不放 |
 
-**三个滑块：**
+**两个滑块：**
 
 - **背景不透明度**（0–80%）：循环背景有多浓。调低更不挡字，调高更有氛围。默认 25%
-- **开屏音量**：开屏音效（拔剑、闪光、烟花）的音量。电脑静音时不出声
-- **循环背景音量**：循环背景环境声的音量，调到 0 就是安静的动态壁纸
+- **开屏音量**：开屏音效（拔剑、闪光、烟花）的音量。电脑静音时不出声；循环背景本身是静音的
 
 **现在，在 Claude 窗口上：** 不用重启 Claude，直接在当前窗口上「播放一次开屏动画」「开启循环背景」或「关掉动画 / 背景」。循环背景就是从这里关的。
 
@@ -70,7 +69,7 @@ cd ai-boot-animations/claude
 |---|---|---|
 | `playIntro` / `loopBackground` | true / true | 同菜单里的两个开关 |
 | `residualAlpha` | 0.25 | 循环背景不透明度 |
-| `introVolume` / `loopVolume` | 1.0 / 0.5 | 开屏音量 / 循环背景音量 |
+| `introVolume` | 1.0 | 开屏音量（循环背景是静音的） |
 | `fadeStartSeconds` | 10.767 | 开屏里进入循环画面、开始透出界面的时间 |
 | `fadeDurationSeconds` | 1.2 | 透出界面的渐变时长 |
 | `showSubtitles` | true | 是否显示字幕 |
@@ -88,7 +87,7 @@ cd ai-boot-animations/claude
 想装自己的动画：把两个文件替换成 `assets/intro.mp4`、`assets/loop.mp4` 再运行 `./install.sh`。要求：
 
 - 开屏的最后一帧能接上循环的第一帧，循环首尾相接
-- 推荐 H.264 或 HEVC（`hvc1` 标签），带音轨的话音轨放在开屏文件里
+- 推荐 H.264 或 HEVC（`hvc1` 标签）；音轨放在开屏文件里，循环文件不用带声音（带了也会被静音）
 - 改了开屏长度，记得在设置文件里调 `fadeStartSeconds` 和字幕时间
 
 ## 卸载
@@ -114,10 +113,10 @@ cd ai-boot-animations/claude
 
 ## 授权
 
-- 代码：[MIT](../LICENSE)
+- 代码：[GPL-3.0](../LICENSE)：可以自由使用、学习和修改；发布改过的版本时必须同样以 GPL-3.0 开源，并保留原作者署名
 - 动画素材：[CC BY-NC-ND 4.0](assets/LICENSE.md)，可以安装、分享，不能商用、不能改后再发布。角色是网上流传的克劳德形象，画面由 Seedance 生成，分镜与动作设计由作者完成
 - 音效：Freesound CC0 素材，见 [CREDITS.md](CREDITS.md)
 
 ---
 
-**English (short):** An unofficial boot animation for the Claude desktop app on macOS. A tiny menu-bar helper overlays Claude's window with an intro animation, then fades into a translucent, click-through looping background. It never modifies Claude.app. Install with `./install.sh` (requires macOS 13+ and Xcode Command Line Tools); uninstall from the ✨ menu or with `./uninstall.sh`. Code is MIT; animation assets are CC BY-NC-ND 4.0.
+**English (short):** An unofficial boot animation for the Claude desktop app on macOS. A tiny menu-bar helper overlays Claude's window with an intro animation, then fades into a translucent, click-through looping background. It never modifies Claude.app. Install with `./install.sh` (requires macOS 13+ and Xcode Command Line Tools); uninstall from the ✨ menu or with `./uninstall.sh`. Code is GPL-3.0; animation assets are CC BY-NC-ND 4.0.

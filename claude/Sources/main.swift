@@ -1,6 +1,10 @@
 // Claude 开机动画 —— 外置浮层小程序
 // 检测 Claude 桌面端启动 → 盖在它的主窗口上播放开屏动画 → 进入循环帧后半透明、点击穿透，作为循环背景一直播放，点「跳过」关掉。
 // 不修改 Claude.app 的任何文件。
+//
+// Copyright (C) 2026 celestewynne0506-pixel
+// 本程序以 GNU GPL v3 发布，见仓库根目录 LICENSE。
+// This program is free software under the GNU General Public License v3.
 
 import AppKit
 import AVFoundation
@@ -23,8 +27,6 @@ struct Config: Codable {
     var residualAlpha = 0.25
     /// 开屏动画音量 0~1
     var introVolume = 1.0
-    /// 循环背景音量 0~1
-    var loopVolume = 0.5
     /// 开屏字幕（时间是成片里的秒数）
     var showSubtitles = true
     /// 字幕入场、出场各渐变多久
@@ -51,7 +53,6 @@ struct Config: Codable {
         fadeDurationSeconds = get(.fadeDurationSeconds, def.fadeDurationSeconds)
         residualAlpha = get(.residualAlpha, def.residualAlpha)
         introVolume = get(.introVolume, def.introVolume)
-        loopVolume = get(.loopVolume, def.loopVolume)
         showSubtitles = get(.showSubtitles, def.showSubtitles)
         subtitleFadeSeconds = get(.subtitleFadeSeconds, def.subtitleFadeSeconds)
         subtitleWidthRatio = get(.subtitleWidthRatio, def.subtitleWidthRatio)
@@ -364,7 +365,7 @@ final class Show {
             volObserver = player.addBoundaryTimeObserver(forTimes: [NSValue(time: timeline.loopStart)], queue: .main) { [weak self] in
                 guard let self, self.phase == .revealed else { return }
                 self.inLoopAudio = true
-                self.rampVolume(to: Float(self.config.loopVolume), over: 1.5)
+                self.rampVolume(to: 0, over: 1.5)   // 循环段只是风声，静音
             }
         } else {
             phase = .revealed
@@ -390,7 +391,6 @@ final class Show {
                 ctx.duration = config.fadeDurationSeconds
                 overlay.animator().alphaValue = config.residualAlpha
             }
-            rampVolume(to: Float(config.loopVolume), over: config.fadeDurationSeconds)
         }
 
         tick = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.follow() }
@@ -456,7 +456,7 @@ final class Show {
             }
         }
         inLoopAudio = true
-        rampVolume(to: Float(config.loopVolume), over: 0.9)
+        rampVolume(to: 0, over: 0.9)   // 开屏音效随画面一起淡出，循环背景静音
         reveal(quick: true)
     }
 
@@ -513,7 +513,7 @@ final class Show {
         guard phase != .ending && phase != .done else { return }
         if phase == .revealed { overlay.alphaValue = c.residualAlpha }
         rampTimer?.invalidate()
-        player.volume = Float(inLoopAudio ? c.loopVolume : c.introVolume)
+        player.volume = inLoopAudio ? 0 : Float(c.introVolume)
     }
 
     func rampVolume(to target: Float, over seconds: Double, then: (() -> Void)? = nil) {
@@ -609,9 +609,7 @@ final class SettingsWindow: NSWindowController {
         r1.onChange = { [weak app] v in app?.update { $0.residualAlpha = v } }
         let r2 = SliderRow(title: "开屏音量", value: c.introVolume, max: 1)
         r2.onChange = { [weak app] v in app?.update { $0.introVolume = v } }
-        let r3 = SliderRow(title: "循环背景音量", value: c.loopVolume, max: 1)
-        r3.onChange = { [weak app] v in app?.update { $0.loopVolume = v } }
-        rows = [r1, r2, r3]
+        rows = [r1, r2]
         let b1 = NSButton(title: "播放一次开屏动画", target: app, action: #selector(AppDelegate.previewIntro))
         let b2 = NSButton(title: "开启循环背景", target: app, action: #selector(AppDelegate.previewLoop))
         let b3 = NSButton(title: "关掉动画 / 背景", target: app, action: #selector(AppDelegate.stopShow))
@@ -622,7 +620,7 @@ final class SettingsWindow: NSWindowController {
         let stack = NSStackView(views: [intro, loop] + rows + [b1, b2, b3, tip])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 10
         stack.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 18, right: 20)
-        stack.setCustomSpacing(16, after: loop); stack.setCustomSpacing(16, after: r3)
+        stack.setCustomSpacing(16, after: loop); stack.setCustomSpacing(16, after: r2)
         tip.preferredMaxLayoutWidth = 260
         w.contentView = stack
         refresh()
@@ -635,7 +633,6 @@ final class SettingsWindow: NSWindowController {
         loop.state = c.loopBackground ? .on : .off
         rows[0].slider.doubleValue = c.residualAlpha
         rows[1].slider.doubleValue = c.introVolume
-        rows[2].slider.doubleValue = c.loopVolume
         rows.forEach { $0.refreshLabel() }
     }
     @objc func toggled() {
@@ -654,7 +651,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var stopItem: NSMenuItem!
     var alphaRow: SliderRow!
     var introVolRow: SliderRow!
-    var loopVolRow: SliderRow!
     var show: Show?
     var waiting: Timer?
     var settings: SettingsWindow?
@@ -740,9 +736,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         introVolRow = SliderRow(title: "开屏音量", value: config.introVolume, max: 1)
         introVolRow.onChange = { [weak self] v in self?.update { $0.introVolume = v } }
         addView(introVolRow, m)
-        loopVolRow = SliderRow(title: "循环背景音量", value: config.loopVolume, max: 1)
-        loopVolRow.onChange = { [weak self] v in self?.update { $0.loopVolume = v } }
-        addView(loopVolRow, m)
         m.addItem(.separator())
 
         let h2 = NSMenuItem(title: "现在，在 Claude 窗口上", action: nil, keyEquivalent: ""); h2.isEnabled = false
@@ -778,7 +771,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         stopItem.isEnabled = show != nil
         alphaRow.slider.doubleValue = config.residualAlpha; alphaRow.refreshLabel()
         introVolRow.slider.doubleValue = config.introVolume; introVolRow.refreshLabel()
-        loopVolRow.slider.doubleValue = config.loopVolume; loopVolRow.refreshLabel()
     }
 
     func update(_ change: (inout Config) -> Void) {
