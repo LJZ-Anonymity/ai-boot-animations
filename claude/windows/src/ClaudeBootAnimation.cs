@@ -337,6 +337,8 @@ namespace ClaudeBootAnimation
         Grid grid, root;
         int styleFixes;
         MediaElement intro, loopA, loopB, activeLoop;
+        // 换播放器时：新的那个真正出帧之前，旧的一直盖在上面（不然机器忙的时候会闪黑）
+        MediaElement swapFrom, swapTo; DateTime swapT0;
         SubtitleElement sub;
         Border skipBtn;
         DispatcherTimer tick;
@@ -451,7 +453,7 @@ namespace ClaudeBootAnimation
             var m = new MediaElement
             {
                 LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Manual,
-                Stretch = Stretch.UniformToFill, IsMuted = muted, ScrubbingEnabled = false,
+                Stretch = Stretch.UniformToFill, IsMuted = muted, ScrubbingEnabled = muted,
                 Source = new Uri(Asset(file), UriKind.Absolute)
             };
             if (muted)
@@ -473,9 +475,36 @@ namespace ClaudeBootAnimation
         {
             if (phase == Phase.Done) return;
             next.Play();
-            Panel.SetZIndex(next, 1); Panel.SetZIndex(done, 0);
             activeLoop = next;
-            done.Pause(); done.Position = TimeSpan.Zero;
+            BeginSwap(done, next); // done 停在最后一帧盖着，等 next 动起来再换上去
+        }
+
+        void BeginSwap(MediaElement from, MediaElement to)
+        {
+            if (swapFrom != null && swapFrom != from) FinishSwap();
+            swapFrom = from; swapTo = to; swapT0 = DateTime.Now;
+        }
+
+        // 每帧检查：新播放器的进度走起来了（画面已经出来），才把旧的撤掉
+        void CheckSwap()
+        {
+            if (swapFrom == null) return;
+            bool moving = swapTo.Position.TotalSeconds > 0.06;
+            if (moving || (DateTime.Now - swapT0).TotalSeconds > 1.5) FinishSwap();
+        }
+
+        void FinishSwap()
+        {
+            var from = swapFrom; var to = swapTo;
+            swapFrom = null; swapTo = null;
+            if (from == intro)
+            {
+                intro.Visibility = Visibility.Collapsed;
+                intro.Stop(); intro.Close();
+                return;
+            }
+            Panel.SetZIndex(to, 1); Panel.SetZIndex(from, 0);
+            from.Pause(); from.Position = TimeSpan.Zero; // 退回第一帧备用（ScrubbingEnabled 让它暂停时也解出这一帧）
         }
 
         void IntroEnded()
@@ -485,8 +514,7 @@ namespace ClaudeBootAnimation
             Log.W("开屏放完，接循环段");
             loopA.Play();
             activeLoop = loopA;
-            intro.Visibility = Visibility.Collapsed;
-            intro.Stop(); intro.Close();
+            BeginSwap(intro, loopA); // 开屏停在最后一帧盖着，循环段动起来再撤
             if (phase == Phase.Intro) Reveal(false);
             CloseTop();
         }
@@ -503,6 +531,7 @@ namespace ClaudeBootAnimation
             Follow(false);
             if (phase == Phase.Done) return;
             EnsureOverlayStyle(false);
+            CheckSwap();
 
             if (!introGone && intro != null)
             {
