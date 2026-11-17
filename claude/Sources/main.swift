@@ -11,6 +11,7 @@ import AVFoundation
 import CoreImage
 
 let claudeBundleID = "com.anthropic.claudefordesktop"
+let showSettingsNote = Notification.Name("io.github.celestewynne0506-pixel.claude-boot-animation.show-settings")
 
 // MARK: - 配置
 
@@ -699,6 +700,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 log("没找到正在运行的 Claude 窗口"); exit(1)
             }
             return
+        }
+        // 只留一个常驻：用文件锁判断，抢不到锁说明已经有一个在跑，通知它弹设置窗口后退出（避免菜单栏出现两颗 ✨）
+        try? FileManager.default.createDirectory(at: Config.dir, withIntermediateDirectories: true)
+        let lockFD = open(Config.dir.appendingPathComponent(".lock").path, O_CREAT | O_RDWR, 0o644)
+        if lockFD < 0 || flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
+            log("已经有一个在运行，通知它弹出设置窗口后退出")
+            DistributedNotificationCenter.default().postNotificationName(showSettingsNote, object: nil, userInfo: nil, deliverImmediately: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exit(0) }
+            return
+        }
+        DistributedNotificationCenter.default().addObserver(forName: showSettingsNote, object: nil, queue: .main) { [weak self] _ in
+            self?.openSettings()
         }
         setupMenu()
         NSWorkspace.shared.notificationCenter.addObserver(
