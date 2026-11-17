@@ -1,6 +1,6 @@
 # AI Boot Animations · AI 应用开机动画
 
-给 Mac 上的 AI 桌面应用加开机动画：打开应用时先放一段开屏，再透出真正的界面，留下一层半透明的动态背景。每个动画都是独立的小程序，**不修改应用本体**，随时一键卸载。
+给 Mac 和 Windows 上的 AI 桌面应用加开机动画：打开应用时先放一段开屏，再透出真正的界面，留下一层半透明的动态背景。每个动画都是独立的小程序，**不修改应用本体**，随时一键卸载。
 
 | 应用 | 动画 | 安装 |
 |---|---|---|
@@ -11,6 +11,8 @@
 ![Claude 开机动画预览](claude/docs/preview.jpg)
 
 ## 快速安装（以 Claude 为例）
+
+### macOS
 
 需要 macOS 13 或更新（Apple 芯片和 Intel 都行）。打开「终端」，粘贴这一行，回车：
 
@@ -33,9 +35,21 @@ cd ai-boot-animations/claude
 
 </details>
 
+### Windows 10 / 11
+
+打开「PowerShell」（开始菜单搜索 PowerShell），粘贴这一行，回车：
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol='Tls12'; irm https://raw.githubusercontent.com/celestewynne0506-pixel/ai-boot-animations/main/claude/windows/web-install.ps1 | iex
+```
+
+打不开 raw.githubusercontent.com 的话，把网址换成 `https://cdn.jsdelivr.net/gh/celestewynne0506-pixel/ai-boot-animations@main/claude/windows/web-install.ps1`。
+
+会下载约 37MB，用 Windows 自带的编译器现场编译（不用装任何 SDK），装到 `%LOCALAPPDATA%\Programs\ClaudeBootAnimation`，右下角托盘出现 ✨ 并弹出设置窗口。
+
 ## 菜单栏 ✨ 能干什么
 
-装好后菜单栏常驻一个小星星 ✨，点开就能调，**拖动时立刻生效**：
+装好后菜单栏（Windows 是右下角托盘）常驻一个小星星 ✨，点开就能调，**拖动时立刻生效**：
 
 - **打开 Claude 时**：要不要播开屏动画、要不要留循环背景（两个都关 = 原装 Claude）
 - **背景不透明度**：循环背景盖得多浓，0% 到 60%
@@ -60,4 +74,4 @@ cd ai-boot-animations/claude
 
 ---
 
-**English:** Boot animations for AI desktop apps on macOS. Each one is a small menu-bar helper that overlays the app's window with an intro, then fades into a translucent, click-through looping background, without modifying the app itself. One-line install: `curl -fsSL https://raw.githubusercontent.com/celestewynne0506-pixel/ai-boot-animations/main/claude/web-install.sh | zsh` (macOS 13+, Apple Silicon or Intel).
+**English:** Boot animations for AI desktop apps on macOS and Windows. Each one is a small menu-bar helper that overlays the app's window with an intro, then fades into a translucent, click-through looping background, without modifying the app itself. One-line install: `curl -fsSL https://raw.githubusercontent.com/celestewynne0506-pixel/ai-boot-animations/main/claude/web-install.sh | zsh` (macOS 13+, Apple Silicon or Intel). Windows 10/11: in PowerShell, `irm https://raw.githubusercontent.com/celestewynne0506-pixel/ai-boot-animations/main/claude/windows/web-install.ps1 | iex`.
