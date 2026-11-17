@@ -331,7 +331,8 @@ namespace ClaudeBootAnimation
 
         Window overlay, top;
         IntPtr overlayH, topH;
-        Grid grid;
+        Grid grid, root;
+        int styleFixes;
         MediaElement intro, loopA, loopB, activeLoop;
         SubtitleElement sub;
         Border skipBtn;
@@ -372,15 +373,18 @@ namespace ClaudeBootAnimation
             }
             else introGone = true;
 
+            // 一个窗口三层：最下面视频（整体调透明度做半透明背景），上面字幕和「跳过」（不跟着变淡）
+            root = new Grid { Background = Brushes.Transparent };
+            root.Children.Add(grid);
             overlay = new Window
             {
-                WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false,
-                ShowActivated = false, Background = Brushes.Black, Content = grid,
+                WindowStyle = WindowStyle.None, AllowsTransparency = true, ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false,
+                ShowActivated = false, Background = Brushes.Transparent, Content = root,
                 Left = -32000, Top = -32000, Width = 10, Height = 10, Title = "Claude Boot Animation"
             };
-            if (!withIntro) overlay.Background = Brushes.Black;
             clickThrough = !withIntro;
             alpha = withIntro ? 1 : 0;
+            grid.Opacity = alpha;
             overlay.SourceInitialized += delegate
             {
                 overlayH = new WindowInteropHelper(overlay).Handle;
@@ -391,7 +395,7 @@ namespace ClaudeBootAnimation
 
             if (withIntro)
             {
-                var topGrid = new Grid { Background = Brushes.Transparent };
+                var topGrid = root;
                 sub = new SubtitleElement { WidthRatio = config.SubtitleWidthRatio };
                 if (config.Subtitles.Count > 0) sub.RefText = config.Subtitles[0].Text;
                 topGrid.Children.Add(sub);
@@ -411,21 +415,6 @@ namespace ClaudeBootAnimation
                 };
                 skipBtn.MouseLeftButtonUp += delegate { SkipIntro(); };
                 topGrid.Children.Add(skipBtn);
-                top = new Window
-                {
-                    WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = Brushes.Transparent,
-                    ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false, ShowActivated = false, Content = topGrid,
-                    Left = -32000, Top = -32000, Width = 10, Height = 10, Title = "Claude Boot Animation Subtitles"
-                };
-                top.SourceInitialized += delegate
-                {
-                    topH = new WindowInteropHelper(top).Handle;
-                    long ex = Native.GetLong(topH, Native.GWL_EXSTYLE);
-                    ex |= Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE;
-                    Native.SetLong(topH, Native.GWL_EXSTYLE, ex);
-                    // 字幕和「跳过」挂在浮层上，永远在浮层上面，而且不跟着背景变半透明
-                    Native.SetLong(topH, Native.GWLP_HWNDPARENT, overlayH.ToInt64());
-                };
             }
 
             overlay.Show();
@@ -501,9 +490,7 @@ namespace ClaudeBootAnimation
 
         void CloseTop()
         {
-            if (top == null) return;
-            var t = top; top = null; topH = IntPtr.Zero;
-            t.Close();
+            if (skipBtn != null) skipBtn.Visibility = Visibility.Collapsed;
         }
 
         // ── 每 15ms：跟随窗口、字幕、渐变 ──
@@ -571,21 +558,19 @@ namespace ClaudeBootAnimation
         {
             if (overlayH == IntPtr.Zero) return;
             long ex = Native.GetLong(overlayH, Native.GWL_EXSTYLE);
-            long want = (ex | Native.WS_EX_LAYERED | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE) & ~Native.WS_EX_APPWINDOW;
+            long want = (ex | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE) & ~Native.WS_EX_APPWINDOW;
             if (clickThrough) want |= Native.WS_EX_TRANSPARENT;
-            if (want != ex)
+            if (want != ex && styleFixes < 20)
             {
+                if (!force) { styleFixes++; Log.W("浮层样式被改过，已补回 0x" + ex.ToString("X") + " → 0x" + want.ToString("X")); }
                 Native.SetLong(overlayH, Native.GWL_EXSTYLE, want);
-                if (!force) Log.W("浮层样式被改过，已补回 0x" + ex.ToString("X") + " → 0x" + want.ToString("X"));
-                force = true;
             }
-            if (force) SetAlpha(alpha);
         }
 
         void SetAlpha(double a)
         {
             alpha = Math.Max(0, Math.Min(1, a));
-            if (overlayH != IntPtr.Zero) Native.SetLayeredWindowAttributes(overlayH, 0, (byte)Math.Round(alpha * 255), Native.LWA_ALPHA);
+            grid.Opacity = alpha;
         }
 
         void RampAlpha(double to, double seconds, Action then)
