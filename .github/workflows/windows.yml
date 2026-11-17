@@ -74,7 +74,8 @@ jobs:
           }
           $dir = "ci-results/${{ github.run_number }}"
           git config user.name "ci"; git config user.email "ci@users.noreply.github.com"
-          git fetch origin ci-results 2>$null
+          $ErrorActionPreference = "Continue"
+          git fetch -q origin ci-results
           if ($LASTEXITCODE -eq 0) { git checkout -q -B ci-results origin/ci-results } else { git checkout -q --orphan ci-results; git rm -rq --cached . 2>$null }
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item out\* $dir -Recurse -Force
