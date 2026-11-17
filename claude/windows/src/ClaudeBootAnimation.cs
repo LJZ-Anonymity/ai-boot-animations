@@ -186,6 +186,9 @@ namespace ClaudeBootAnimation
         [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
         [DllImport("user32.dll")] public static extern bool SetLayeredWindowAttributes(IntPtr h, uint key, byte alpha, uint flags);
         [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+        [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+        [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT p);
+        [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint flags);
         [DllImport("user32.dll", EntryPoint = "GetWindowLong")] static extern int GetWindowLong32(IntPtr h, int i);
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")] static extern IntPtr GetWindowLongPtr64(IntPtr h, int i);
         [DllImport("user32.dll", EntryPoint = "SetWindowLong")] static extern int SetWindowLong32(IntPtr h, int i, int v);
@@ -338,7 +341,8 @@ namespace ClaudeBootAnimation
         Native.RECT lastRect;
 
         // 整窗透明度的渐变
-        double alpha, alphaFrom, alphaTo; DateTime alphaT0; double alphaDur; Action alphaThen;
+        double alpha, alphaFrom, alphaTo; DateTime alphaT0; double alphaDur = -1; Action alphaThen;
+        bool clickThrough;
         // 开屏音量渐变
         double volFrom, volTo; DateTime volT0; double volDur = -1;
 
@@ -375,17 +379,14 @@ namespace ClaudeBootAnimation
                 Left = -32000, Top = -32000, Width = 10, Height = 10, Title = "Claude Boot Animation"
             };
             if (!withIntro) overlay.Background = Brushes.Black;
+            clickThrough = !withIntro;
+            alpha = withIntro ? 1 : 0;
             overlay.SourceInitialized += delegate
             {
                 overlayH = new WindowInteropHelper(overlay).Handle;
-                long ex = Native.GetLong(overlayH, Native.GWL_EXSTYLE);
-                ex |= Native.WS_EX_LAYERED | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE;
-                ex &= ~Native.WS_EX_APPWINDOW;
-                if (!withIntro) ex |= Native.WS_EX_TRANSPARENT;
-                Native.SetLong(overlayH, Native.GWL_EXSTYLE, ex);
+                EnsureOverlayStyle(true);
                 // 设成 Claude 窗口的「附属窗口」：系统自动让它一直在 Claude 上面，Claude 被别的窗口挡住时它也一起被挡住
                 Native.SetLong(overlayH, Native.GWLP_HWNDPARENT, Target.Hwnd.ToInt64());
-                SetAlpha(withIntro ? 1 : 0);
             };
 
             if (withIntro)
@@ -428,8 +429,10 @@ namespace ClaudeBootAnimation
             }
 
             overlay.Show();
+            EnsureOverlayStyle(true); // WPF 显示窗口时会重写扩展样式，显示后再补一次
             if (top != null) top.Show();
             Follow(true);
+            Log.W("浮层样式 0x" + Native.GetLong(overlayH, Native.GWL_EXSTYLE).ToString("X"));
 
             if (withIntro)
             {
@@ -509,6 +512,7 @@ namespace ClaudeBootAnimation
             if (phase == Phase.Done) return;
             Follow(false);
             if (phase == Phase.Done) return;
+            EnsureOverlayStyle(false);
 
             if (!introGone && intro != null)
             {
@@ -560,6 +564,22 @@ namespace ClaudeBootAnimation
             int cmd = show ? 4 /*SW_SHOWNOACTIVATE*/ : 0 /*SW_HIDE*/;
             if (overlayH != IntPtr.Zero) Native.ShowWindow(overlayH, cmd);
             if (topH != IntPtr.Zero) Native.ShowWindow(topH, cmd);
+        }
+
+        /// 分层（整窗半透明）+ 不出现在任务栏 + 不抢焦点；透出后再加点击穿透。被冲掉就补回来
+        void EnsureOverlayStyle(bool force)
+        {
+            if (overlayH == IntPtr.Zero) return;
+            long ex = Native.GetLong(overlayH, Native.GWL_EXSTYLE);
+            long want = (ex | Native.WS_EX_LAYERED | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE) & ~Native.WS_EX_APPWINDOW;
+            if (clickThrough) want |= Native.WS_EX_TRANSPARENT;
+            if (want != ex)
+            {
+                Native.SetLong(overlayH, Native.GWL_EXSTYLE, want);
+                if (!force) Log.W("浮层样式被改过，已补回 0x" + ex.ToString("X") + " → 0x" + want.ToString("X"));
+                force = true;
+            }
+            if (force) SetAlpha(alpha);
         }
 
         void SetAlpha(double a)
@@ -617,7 +637,7 @@ namespace ClaudeBootAnimation
         {
             if (phase != Phase.Intro) return;
             phase = Phase.Revealed;
-            SetClickThrough(overlayH);
+            clickThrough = true; EnsureOverlayStyle(true);
             SetClickThrough(topH);
             grid.Background = Brushes.Transparent;
             if (skipBtn != null) skipBtn.Visibility = Visibility.Collapsed; // 进入循环背景后不再显示「跳过」
@@ -663,7 +683,7 @@ namespace ClaudeBootAnimation
         {
             if (phase == Phase.Ending || phase == Phase.Done) return;
             phase = Phase.Ending;
-            SetClickThrough(overlayH);
+            clickThrough = true; EnsureOverlayStyle(true);
             double d = fast ? 0.4 : 1.2;
             Log.W(fast ? "关闭（跳过）" : "淡出");
             if (skipBtn != null) skipBtn.Visibility = Visibility.Collapsed;
@@ -695,10 +715,15 @@ namespace ClaudeBootAnimation
             if (w <= 0 || h <= 0) return;
             using (var bmp = new SD.Bitmap(w, h))
             {
-                using (var g = SD.Graphics.FromImage(bmp)) g.CopyFromScreen(r.Left, r.Top, 0, 0, new SD.Size(w, h));
+                using (var g = SD.Graphics.FromImage(bmp))
+                    g.CopyFromScreen(r.Left, r.Top, 0, 0, new SD.Size(w, h), SD.CopyPixelOperation.SourceCopy | SD.CopyPixelOperation.CaptureBlt);
                 bmp.Save(path, SD.Imaging.ImageFormat.Png);
             }
-            Log.W("截图 " + path + "  播放阶段=" + phase + " 透明度=" + alpha.ToString("0.00"));
+            // 点击穿透检查：窗口中心这一点，鼠标点下去会落到哪个窗口
+            IntPtr hit = Native.WindowFromPoint(new Native.POINT { X = r.Left + w / 2, Y = r.Top + h / 2 });
+            IntPtr root = Native.GetAncestor(hit, 2 /*GA_ROOT*/);
+            string who = root == overlayH ? "浮层" : root == Target.Hwnd ? "目标窗口" : root == topH ? "字幕层" : ("其他 " + Native.ClassOf(root));
+            Log.W("截图 " + path + "  播放阶段=" + phase + " 透明度=" + alpha.ToString("0.00") + " 样式=0x" + Native.GetLong(overlayH, Native.GWL_EXSTYLE).ToString("X") + " 中心点击落到=" + who);
         }
     }
 
