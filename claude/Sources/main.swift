@@ -710,6 +710,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         log("常驻启动，开屏=\(config.playIntro) 循环背景=\(config.loopBackground)")
         if CommandLine.arguments.contains("--settings") { openSettings() }
+        if CommandLine.arguments.contains("--show-menu") {   // 测试/截图用：自动弹出菜单
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.statusItem.button?.performClick(nil) }
+        }
     }
 
     func setupMenu() {
