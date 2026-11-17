@@ -12,7 +12,18 @@
 
 ## 快速安装（以 Claude 为例）
 
-需要 macOS 13 或更新，以及 Xcode 命令行工具（没有的话先运行 `xcode-select --install`）。
+需要 macOS 13 或更新（Apple 芯片和 Intel 都行）。打开「终端」，粘贴这一行，回车：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/celestewynne0506-pixel/ai-boot-animations/main/claude/web-install.sh | zsh
+```
+
+几秒钟就装好，菜单栏右边（电池左边）出现 ✨，并弹出设置窗口。不需要装 Xcode。
+
+<details>
+<summary>想自己从源码编译？</summary>
+
+需要 Xcode 命令行工具（没有的话先运行 `xcode-select --install`）：
 
 ```bash
 git clone https://github.com/celestewynne0506-pixel/ai-boot-animations.git
@@ -20,7 +31,25 @@ cd ai-boot-animations/claude
 ./install.sh
 ```
 
-详细说明、设置和卸载见各文件夹里的 README。
+</details>
+
+## 菜单栏 ✨ 能干什么
+
+装好后菜单栏常驻一个小星星 ✨，点开就能调，**拖动时立刻生效**：
+
+- **打开 Claude 时**：要不要播开屏动画、要不要留循环背景（两个都关 = 原装 Claude）
+- **背景不透明度**：循环背景盖得多浓，0% 到 60%
+- **开屏音量**：跟随系统音量再按比例调，系统静音时自动没声
+- **现在，在 Claude 窗口上**：马上播一次开屏 / 开启循环背景 / 关掉
+- **设置窗口、设置文件、卸载**
+
+<p align="center">
+  <img src="claude/docs/menu.png" width="300" alt="菜单栏 ✨ 菜单">
+  &nbsp;&nbsp;
+  <img src="claude/docs/settings.png" width="330" alt="设置窗口">
+</p>
+
+详细说明、设置文件参数和卸载见 [claude/README.md](claude/README.md)。
 
 ## 授权
 
@@ -31,4 +60,4 @@ cd ai-boot-animations/claude
 
 ---
 
-**English:** Boot animations for AI desktop apps on macOS. Each one is a small menu-bar helper that overlays the app's window with an intro, then fades into a translucent, click-through looping background, without modifying the app itself. See each folder for install instructions.
+**English:** Boot animations for AI desktop apps on macOS. Each one is a small menu-bar helper that overlays the app's window with an intro, then fades into a translucent, click-through looping background, without modifying the app itself. One-line install: `curl -fsSL https://raw.githubusercontent.com/celestewynne0506-pixel/ai-boot-animations/main/claude/web-install.sh | zsh` (macOS 13+, Apple Silicon or Intel).

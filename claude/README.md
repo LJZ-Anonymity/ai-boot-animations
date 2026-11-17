@@ -16,7 +16,17 @@
 
 ## 安装
 
-需要 **macOS 13 或更新**，以及 Xcode 命令行工具（没有的话先在终端运行 `xcode-select --install`）。
+需要 **macOS 13 或更新**，Apple 芯片和 Intel 都行。
+
+**一行命令安装（推荐）**：打开「终端」，粘贴这一行，回车：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/celestewynne0506-pixel/ai-boot-animations/main/claude/web-install.sh | zsh
+```
+
+会从本仓库的 [Releases](https://github.com/celestewynne0506-pixel/ai-boot-animations/releases) 下载编好的程序（约 30MB）并装好，不需要装 Xcode。
+
+**从源码编译安装**：需要 Xcode 命令行工具（没有的话先运行 `xcode-select --install`）：
 
 ```bash
 git clone https://github.com/celestewynne0506-pixel/ai-boot-animations.git
@@ -26,7 +36,7 @@ cd ai-boot-animations/claude
 
 装好后菜单栏右边（电池左边）会出现 ✨ 图标，并弹出设置窗口。下次打开 Claude 就会播放；想马上看效果，点 ✨ →「播放一次开屏动画」。
 
-本地编译安装，不需要下载来路不明的 App，也不需要辅助功能、屏幕录制等任何系统授权。
+不需要辅助功能、屏幕录制等任何系统授权，也不会修改 Claude 本身。
 
 ## 菜单栏 ✨ 能干什么
 

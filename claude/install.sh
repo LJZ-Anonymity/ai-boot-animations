@@ -1,9 +1,16 @@
 #!/bin/zsh
 # 编译 → 装到 ~/Applications → 设为登录自动启动 → 弹出设置窗口
 # 不会修改 Claude.app 的任何文件
+# 在源码目录里运行会现场编译；在 Release 压缩包里运行（旁边有编好的 .app）就直接装
 set -e
 cd "${0:A:h}"
-./build.sh
+if [[ -f Sources/main.swift ]]; then
+  ./build.sh
+  SRC_APP=build/ClaudeBootAnimation.app
+else
+  SRC_APP=ClaudeBootAnimation.app
+  [[ -d "$SRC_APP" ]] || { echo "找不到 $SRC_APP"; exit 1; }
+fi
 LABEL=io.github.celestewynne0506-pixel.claude-boot-animation
 DEST="$HOME/Applications/ClaudeBootAnimation.app"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
@@ -15,7 +22,8 @@ for L in "$LABEL" io.github.celeste.claude-boot-animation; do
 done
 pkill -f 'ClaudeBootAnimation.app/Contents/MacOS/ClaudeBootAnimation' 2>/dev/null || true
 mkdir -p "$HOME/Applications" "$HOME/Library/LaunchAgents"
-rm -rf "$DEST"; cp -R build/ClaudeBootAnimation.app "$DEST"
+rm -rf "$DEST"; ditto "$SRC_APP" "$DEST"
+xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
 cat > "$PLIST" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
