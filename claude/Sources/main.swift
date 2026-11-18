@@ -2,7 +2,7 @@
 // 检测 Claude 桌面端启动 → 盖在它的主窗口上播放开屏动画 → 进入循环帧后半透明、点击穿透，作为循环背景一直播放，点「跳过」关掉。
 // 不修改 Claude.app 的任何文件。
 //
-// Copyright (C) 2026 celestewynne0506-pixel
+// Copyright (C) 2026 wynneceles
 // 本程序以 GNU GPL v3 发布，见仓库根目录 LICENSE。
 // This program is free software under the GNU General Public License v3.
 

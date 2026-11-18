@@ -2,7 +2,7 @@
 
 `assets/intro.mp4`、`assets/loop.mp4` 和 `docs/preview.jpg`：
 
-- **分镜、动作与剪辑**由 celestewynne0506-pixel 设计；画面用 Seedance 生成。
+- **分镜、动作与剪辑**由 wynneceles 设计；画面用 Seedance 生成。
 - **角色形象**是网上广泛流传的「克劳德」拟人形象，并非本仓库作者原创，著作权归原设计者。
 - 作者享有权利的部分按 **[CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/deed.zh-hans)** 授权：
   - ✅ 可以下载、安装、自己使用，可以原样转发分享（请注明出处）
@@ -14,4 +14,4 @@
 
 ---
 
-Storyboard, motion design and editing by celestewynne0506-pixel; footage generated with Seedance. The character is a widely shared fan depiction of "Claude", not an original design of this repository's author. The author's rights in these files are licensed under CC BY-NC-ND 4.0 (share with attribution, no commercial use, no derivatives).
+Storyboard, motion design and editing by wynneceles; footage generated with Seedance. The character is a widely shared fan depiction of "Claude", not an original design of this repository's author. The author's rights in these files are licensed under CC BY-NC-ND 4.0 (share with attribution, no commercial use, no derivatives).

@@ -17,7 +17,7 @@
 需要 macOS 13 或更新（Apple 芯片和 Intel 都行）。打开「终端」，粘贴这一行，回车：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/celestewynne0506-pixel/ai-boot-animations/main/claude/web-install.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/wynneceles/ai-boot-animations/main/claude/web-install.sh | zsh
 ```
 
 几秒钟就装好，菜单栏右边（电池左边）出现 ✨，并弹出设置窗口。不需要装 Xcode。
@@ -28,7 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/celestewynne0506-pixel/ai-boot-anim
 需要 Xcode 命令行工具（没有的话先运行 `xcode-select --install`）：
 
 ```bash
-git clone https://github.com/celestewynne0506-pixel/ai-boot-animations.git
+git clone https://github.com/wynneceles/ai-boot-animations.git
 cd ai-boot-animations/claude
 ./install.sh
 ```
@@ -40,10 +40,10 @@ cd ai-boot-animations/claude
 打开「PowerShell」（开始菜单搜索 PowerShell），粘贴这一行，回车：
 
 ```powershell
-[Net.ServicePointManager]::SecurityProtocol='Tls12'; irm https://raw.githubusercontent.com/celestewynne0506-pixel/ai-boot-animations/main/claude/windows/web-install.ps1 | iex
+[Net.ServicePointManager]::SecurityProtocol='Tls12'; irm https://raw.githubusercontent.com/wynneceles/ai-boot-animations/main/claude/windows/web-install.ps1 | iex
 ```
 
-打不开 raw.githubusercontent.com 的话，把网址换成 `https://cdn.jsdelivr.net/gh/celestewynne0506-pixel/ai-boot-animations@main/claude/windows/web-install.ps1`。
+打不开 raw.githubusercontent.com 的话，把网址换成 `https://cdn.jsdelivr.net/gh/wynneceles/ai-boot-animations@main/claude/windows/web-install.ps1`。
 
 会下载约 37MB，用 Windows 自带的编译器现场编译（不用装任何 SDK），装到 `%LOCALAPPDATA%\Programs\ClaudeBootAnimation`，右下角托盘出现 ✨ 并弹出设置窗口。
 
@@ -74,4 +74,4 @@ cd ai-boot-animations/claude
 
 ---
 
-**English:** Boot animations for AI desktop apps on macOS and Windows. Each one is a small menu-bar helper that overlays the app's window with an intro, then fades into a translucent, click-through looping background, without modifying the app itself. One-line install: `curl -fsSL https://raw.githubusercontent.com/celestewynne0506-pixel/ai-boot-animations/main/claude/web-install.sh | zsh` (macOS 13+, Apple Silicon or Intel). Windows 10/11: in PowerShell, `irm https://raw.githubusercontent.com/celestewynne0506-pixel/ai-boot-animations/main/claude/windows/web-install.ps1 | iex`.
+**English:** Boot animations for AI desktop apps on macOS and Windows. Each one is a small menu-bar helper that overlays the app's window with an intro, then fades into a translucent, click-through looping background, without modifying the app itself. One-line install: `curl -fsSL https://raw.githubusercontent.com/wynneceles/ai-boot-animations/main/claude/web-install.sh | zsh` (macOS 13+, Apple Silicon or Intel). Windows 10/11: in PowerShell, `irm https://raw.githubusercontent.com/wynneceles/ai-boot-animations/main/claude/windows/web-install.ps1 | iex`.
