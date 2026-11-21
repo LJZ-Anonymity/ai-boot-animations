@@ -43,7 +43,15 @@ cd ai-boot-animations/codex
 
 ### Windows
 
-暂时只有 Mac 版。
+需要 **Windows 10 / 11**。打开「PowerShell」（开始菜单搜索 PowerShell），粘贴这一行，回车：
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol='Tls12'; irm https://raw.githubusercontent.com/wynneceles/ai-boot-animations/main/codex/windows/web-install.ps1 | iex
+```
+
+打不开 raw.githubusercontent.com 的话，把网址换成 `https://cdn.jsdelivr.net/gh/wynneceles/ai-boot-animations@main/codex/windows/web-install.ps1`。
+
+会下载约 35MB，用 Windows 自带的编译器现场编译（不用装任何 SDK），装到 `%LOCALAPPDATA%\Programs\GPTBootAnimation`，右下角托盘出现月亮图标并弹出设置窗口。和 Claude 版可以同时装。卸载：托盘月亮图标右键 →「卸载 GPT 开机动画…」。
 
 ## 菜单栏 🌙 能干什么
 
