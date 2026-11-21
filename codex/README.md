@@ -27,7 +27,7 @@
 curl -fsSL https://raw.githubusercontent.com/wynneceles/ai-boot-animations/main/codex/web-install.sh | zsh
 ```
 
-会从本仓库的 [Releases](https://github.com/wynneceles/ai-boot-animations/releases) 下载编好的程序（约 26MB）并装好，不需要装 Xcode。
+会从本仓库的 [Releases](https://github.com/wynneceles/ai-boot-animations/releases) 下载编好的程序（约 53MB）并装好，不需要装 Xcode。
 
 **从源码编译安装**：需要 Xcode 命令行工具（没有的话先运行 `xcode-select --install`）：
 
