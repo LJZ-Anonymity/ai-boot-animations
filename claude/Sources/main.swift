@@ -682,9 +682,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 菜单栏图标只在目标应用开着时出现
     func syncIcon() {
         let v = targetRunning || show != nil
-        if statusItem != nil && statusItem.isVisible != v { log("菜单栏图标 → \(v ? "显示" : "隐藏")") }
-        statusItem?.isVisible = v
+        guard let si = statusItem, si.isVisible != v else { return }
+        log("菜单栏图标 → \(v ? "显示" : "隐藏")")
+        // macOS 在图标隐藏时会把记住的位置删掉，再显示就被排到最左边（刘海后面）。
+        // 所以隐藏前先把位置抄一份，显示前再写回去。
+        let d = UserDefaults.standard
+        if !v, let pos = d.object(forKey: Self.posKey) { d.set(pos, forKey: Self.savedPosKey) }
+        if v { d.set(d.object(forKey: Self.savedPosKey) ?? Self.defaultPos, forKey: Self.posKey) }
+        si.isVisible = v
+        if v { logIconFrame() }
     }
+    static let posKey = "NSStatusItem Preferred Position main"
+    static let savedPosKey = "iconPosition"   // 我们自己存的副本，系统不会删
+    static let defaultPos = 230
     let previewOnly = CommandLine.arguments.contains("--preview")
     let loopOnlyPreview = CommandLine.arguments.contains("--loop-only")
 
@@ -755,10 +765,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func setupMenu() {
         // 带刘海的 MacBook 上，新图标默认会被排到刘海后面看不见。
         // 第一次启动时把它的位置固定到电池图标左边（数值 = 离屏幕右边的距离）；以后按住 ⌘ 拖动会自己记住新位置。
-        let posKey = "NSStatusItem Preferred Position main"
-        if UserDefaults.standard.object(forKey: posKey) == nil || CommandLine.arguments.contains("--reset-icon") {
-            UserDefaults.standard.set(230, forKey: posKey)
-        }
+        let d = UserDefaults.standard
+        if CommandLine.arguments.contains("--reset-icon") { d.removeObject(forKey: Self.savedPosKey) }
+        if d.object(forKey: Self.savedPosKey) == nil { d.set(d.object(forKey: Self.posKey) ?? Self.defaultPos, forKey: Self.savedPosKey) }
+        d.set(d.object(forKey: Self.savedPosKey)!, forKey: Self.posKey)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.autosaveName = "main"
         statusItem.behavior = []   // 不允许被拖出菜单栏删掉
@@ -791,6 +801,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item("卸载 Claude 开机动画…", #selector(uninstall), m)
         statusItem.menu = m
         refreshMenu()
+        logIconFrame()
+    }
+    func logIconFrame() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             guard let si = self?.statusItem, si.isVisible else { return }
             let w = si.button?.window
