@@ -39,5 +39,5 @@ launchctl bootstrap "gui/$UID_" "$PLIST"
 sleep 1.5
 open "$DEST"   # 已在运行时再打开一次 = 弹出设置窗口
 echo
-echo "🌙 装好了！菜单栏右边出现 🌙✨ 图标（moon.stars），也弹出了设置窗口。"
+echo "🌙 装好了！已弹出设置窗口。ChatGPT 开着时，菜单栏右边会出现 🌙✨ 图标（moon.stars）。"
 echo "   下次打开 ChatGPT 就会播放开机动画。想马上看：打开 ChatGPT，再点菜单栏 🌙✨ →「播放一次开屏动画」。"

@@ -37,7 +37,7 @@ cd ai-boot-animations/codex
 ./install.sh
 ```
 
-装好后菜单栏右边会出现 🌙 图标（月亮和星星），并弹出设置窗口。下次打开 ChatGPT 就会播放；想马上看效果，先打开 ChatGPT，再点 🌙 →「播放一次开屏动画」。
+装好后会弹出设置窗口。下次打开 ChatGPT 就会播放，ChatGPT 开着时菜单栏右边会出现 🌙 图标（月亮和星星）；想马上看效果，先打开 ChatGPT，再点 🌙 →「播放一次开屏动画」。
 
 不需要辅助功能、屏幕录制等任何系统授权，也不会修改 ChatGPT 本身。
 
@@ -47,7 +47,7 @@ cd ai-boot-animations/codex
 
 ## 菜单栏 🌙 能干什么
 
-装好后菜单栏右边会常驻一个月亮 🌙，点开就能调。所有调节**拖动时立刻生效**，正在播放的动画马上跟着变，不用重启 ChatGPT。
+ChatGPT 开着的时候，菜单栏右边会出现一个月亮 🌙，点开就能调（ChatGPT 没开时图标自动隐藏；想改设置，再打开一次「GPT 开机动画」App 就会弹出设置窗口）。所有调节**拖动时立刻生效**，正在播放的动画马上跟着变，不用重启 ChatGPT。
 
 <p align="center">
   <img src="docs/menu.png" width="300" alt="菜单栏 🌙 菜单">
@@ -122,6 +122,7 @@ cd ai-boot-animations/codex
 - 小程序登录后在后台常驻（`~/Library/LaunchAgents`），监听 ChatGPT 启动（应用标识 `com.openai.codex`）
 - 用 `CGWindowListCopyWindowInfo` 只读取 ChatGPT 主窗口的位置和大小（不读标题和内容，所以不需要授权），在它正上方盖一个无边框窗口播放动画，并跟着窗口移动、缩放，不会盖到别的 App
 - 开屏和循环在内存里拼成一条约 8 小时的时间线一次播放，接缝不卡；放到头自动跳回循环开头
+- 只在 ChatGPT 启动、真要播放时才在后台拼这条时间线（先拼一条短的应急），播完、跳过或 ChatGPT 关掉就释放；平时后台只占几十 MB
 - 进入循环后窗口变半透明并开启点击穿透，ChatGPT 照常使用
 
 日志：`~/Library/Logs/GPTBootAnimation.log`

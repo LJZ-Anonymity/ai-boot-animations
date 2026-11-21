@@ -39,5 +39,5 @@ launchctl bootstrap "gui/$UID_" "$PLIST"
 sleep 1.5
 open "$DEST"   # 已在运行时再打开一次 = 弹出设置窗口
 echo
-echo "✨ 装好了！菜单栏右边（电池左边）出现 ✨ 图标，也弹出了设置窗口。"
+echo "✨ 装好了！已弹出设置窗口。Claude 开着时，菜单栏右边（电池左边）会出现 ✨ 图标。"
 echo "   下次打开 Claude 就会播放开机动画。想马上看：菜单栏 ✨ →「播放一次开屏动画」。"

@@ -22,7 +22,7 @@
 
 ## 配音
 
-两句英文台词（"Every answer... is already in my hand." / "Now tell me yours."）用 ElevenLabs 生成，音色是作者自己设计的 Claude Cheeky。
+两句英文台词（"Every answer... is already in my hand." / "All I lack... is your question."）用 ElevenLabs 生成，音色是作者自己设计的 Claude Cheeky。
 
 ---
 

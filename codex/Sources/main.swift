@@ -36,7 +36,7 @@ struct Config: Codable {
     var subtitleWidthRatio = 0.6
     var subtitles: [Subtitle] = [
         Subtitle(text: "Every answer... is already in my hand.", start: 3.2, end: 7.2),
-        Subtitle(text: "Now tell me yours.", start: 8.9, end: 11.3),
+        Subtitle(text: "All I lack... is your question.", start: 8.65, end: 11.6),
     ]
 
     init() {}
@@ -58,6 +58,10 @@ struct Config: Codable {
         subtitleFadeSeconds = get(.subtitleFadeSeconds, def.subtitleFadeSeconds)
         subtitleWidthRatio = get(.subtitleWidthRatio, def.subtitleWidthRatio)
         subtitles = get(.subtitles, def.subtitles)
+        // 1.0.0 的第二句是 "Now tell me yours."（8.9–11.3s），1.1.0 换了台词和配音；没被用户改过的就跟着换
+        if let i = subtitles.firstIndex(where: { $0.text == "Now tell me yours." && $0.start == 8.9 && $0.end == 11.3 }) {
+            subtitles[i] = def.subtitles[1]
+        }
     }
     private enum Legacy: String, CodingKey { case enabled }
 
@@ -152,28 +156,34 @@ func buildTimeline(intro: URL?, loop: URL, repeats: Int = 5000) -> Timeline {   
     return Timeline(asset: comp.copy() as! AVComposition, loopStart: loopStart)
 }
 
-/// 8 小时的时间线现场拼要 3~4 秒，所以程序启动时就在后台拼好存着，点播放时直接用（实测 0.25 秒出画面）。
-/// 后台还没拼好时，先现场拼一条短的（300 段 ≈ 29 分钟，约 0.1 秒）顶上，放到头照样跳回循环开头继续。
+/// 8 小时的时间线拼起来要好几秒，所以目标应用一启动就在后台拼（应用没开时不拼、不占内存，关掉后就释放）。
+/// 先拼一条短的（300 段，不到 1 秒）应急，再拼长的；放到头照样跳回循环开头继续。
 final class TimelineCache {
     let introURL: URL, loopURL: URL, repeats: Int
     private var ready: [Bool: Timeline] = [:]
-    init(introURL: URL, loopURL: URL, repeats: Int) {
+    private var short: [Bool: Timeline] = [:]
+    init(introURL: URL, loopURL: URL, repeats: Int, variants: [Bool]) {
         self.introURL = introURL; self.loopURL = loopURL; self.repeats = repeats
-        for withIntro in [true, false] {
-            DispatchQueue.global(qos: .utility).async {
+        for withIntro in variants {
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let s = buildTimeline(intro: withIntro ? introURL : nil, loop: loopURL, repeats: min(repeats, 300))
+                DispatchQueue.main.async { self?.short[withIntro] = s }
+                guard self != nil else { return }
                 let t0 = Date()
                 let t = buildTimeline(intro: withIntro ? introURL : nil, loop: loopURL, repeats: repeats)
                 DispatchQueue.main.async {
-                    self.ready[withIntro] = t
+                    guard let self else { return }   // 中途已经释放（应用关了）就丢掉
+                    self.ready[withIntro] = t; self.short[withIntro] = nil
                     log("后台时间线准备好（\(withIntro ? "开屏+循环" : "只循环")，\(repeats) 段，\(Int(Date().timeIntervalSince(t0) * 1000))ms）")
                 }
             }
         }
     }
-    var isReady: Bool { ready.count == 2 }
+    var isReady: Bool { !ready.isEmpty }
     func get(withIntro: Bool) -> Timeline {
         if let t = ready[withIntro] { return t }
-        log("后台时间线还没好，先用短的顶上")
+        if let t = short[withIntro] { log("长时间线还没好，先用短的"); return t }
+        log("后台时间线还没好，现场拼短的顶上")
         return buildTimeline(intro: withIntro ? introURL : nil, loop: loopURL, repeats: min(repeats, 300))
     }
 }
@@ -655,11 +665,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var show: Show?
     var waiting: Timer?
     var settings: SettingsWindow?
-    lazy var cache: TimelineCache = {
+    var cache: TimelineCache?
+    /// 只拼这次要放的那一条（开屏+循环 或 只循环），另一条用到时再现场拼短的
+    func ensureCache(withIntro: Bool) -> TimelineCache {
+        if let c = cache { return c }
         let args = CommandLine.arguments   // 测试用：--repeats N 缩短时间线
         let reps = args.firstIndex(of: "--repeats").flatMap { i in i + 1 < args.count ? Int(args[i + 1]) : nil } ?? 5000
-        return TimelineCache(introURL: introURL, loopURL: loopURL, repeats: reps)
-    }()
+        let c = TimelineCache(introURL: introURL, loopURL: loopURL, repeats: reps, variants: [withIntro])
+        cache = c; log("开始在后台准备视频")
+        return c
+    }
+    var targetRunning: Bool { !NSRunningApplication.runningApplications(withBundleIdentifier: targetBundleID).isEmpty }
+    /// 没在播（播完、跳过关掉、或目标应用已关）→ 放掉视频时间线，不占内存
+    func releaseIfIdle() {
+        guard show == nil, waiting == nil || waiting?.isValid == false, cache != nil else { return }
+        cache = nil; log("没在播放，释放视频")
+        // 拼时间线用掉的几百 MB 释放后，分配器默认先攒着；1 秒后（播放器收尾完）主动还给系统
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { malloc_zone_pressure_relief(nil, 0) }
+    }
+    /// 菜单栏图标只在目标应用开着时出现
+    func syncIcon() {
+        let v = targetRunning || show != nil
+        if statusItem != nil && statusItem.isVisible != v { log("菜单栏图标 → \(v ? "显示" : "隐藏")") }
+        statusItem?.isVisible = v
+    }
     let previewOnly = CommandLine.arguments.contains("--preview")
     let loopOnlyPreview = CommandLine.arguments.contains("--loop-only")
 
@@ -667,7 +696,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var loopURL: URL { Bundle.main.url(forResource: "loop", withExtension: "mp4")! }
 
     func applicationDidFinishLaunching(_ n: Notification) {
-        if !(previewOnly || loopOnlyPreview) { _ = cache }   // 常驻时一启动就开始在后台拼时间线
         if let i = CommandLine.arguments.firstIndex(of: "--render-subtitle"), i + 3 < CommandLine.arguments.count {
             // 测试用：离屏把字幕画到一张背景图上（不需要亮屏）：--render-subtitle 背景.png 输出.png 第几句
             let args = CommandLine.arguments
@@ -686,9 +714,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if CommandLine.arguments.contains("--wait-cache") {
             // 测试用：等后台时间线拼好再开始，量出跟点菜单一样的响应速度
-            _ = cache
+            _ = ensureCache(withIntro: !loopOnlyPreview)
             Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] t in
-                guard let self, self.cache.isReady else { return }
+                guard let self, self.cache?.isReady == true else { return }
                 t.invalidate()
                 if !self.startOnCurrentWindow(withIntro: !self.loopOnlyPreview, exitWhenDone: true) { exit(1) }
             }
@@ -717,6 +745,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(appLaunched(_:)),
             name: NSWorkspace.didLaunchApplicationNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(appTerminated(_:)),
+            name: NSWorkspace.didTerminateApplicationNotification, object: nil)
+        syncIcon()
         log("常驻启动，开屏=\(config.playIntro) 循环背景=\(config.loopBackground)")
         if CommandLine.arguments.contains("--settings") { openSettings() }
         if CommandLine.arguments.contains("--show-menu") {   // 测试/截图用：自动弹出菜单
@@ -734,6 +766,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.autosaveName = "main"
         statusItem.behavior = []   // 不允许被拖出菜单栏删掉
+        statusItem.isVisible = targetRunning
         statusItem.button?.image = NSImage(systemSymbolName: "moon.stars", accessibilityDescription: "GPT 开机动画")   // 不用 ✨，和 Claude 版区分开
         let m = NSMenu(); m.delegate = self
 
@@ -763,7 +796,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = m
         refreshMenu()
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-            guard let si = self?.statusItem else { return }
+            guard let si = self?.statusItem, si.isVisible else { return }
             let w = si.button?.window
             log("菜单栏图标诊断：isVisible=\(si.isVisible) 窗口=\(w.map { "\($0.frame)" } ?? "无") 可见=\(w?.occlusionState.contains(.visible) ?? false) 屏幕=\(w?.screen?.localizedName ?? "无")")
         }
@@ -847,11 +880,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func appLaunched(_ n: Notification) {
         guard let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
               app.bundleIdentifier == targetBundleID else { return }
+        syncIcon()
         config = Config.load()
         log("检测到 ChatGPT 启动 pid=\(app.processIdentifier)，开屏=\(config.playIntro) 循环背景=\(config.loopBackground)")
         guard config.playIntro || config.loopBackground else { return }
         show?.teardown()
         let withIntro = config.playIntro
+        _ = ensureCache(withIntro: withIntro)   // 趁等窗口的这几秒在后台拼
         // 等主窗口出现，最多 30 秒
         let pid = app.processIdentifier, deadline = Date().addingTimeInterval(30)
         waiting?.invalidate()
@@ -860,8 +895,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if let t = findTargetWindow(pid: pid) {
                 timer.invalidate(); self.start(pid: pid, target: t, withIntro: withIntro, exitWhenDone: false)
             } else if Date() > deadline || app.isTerminated {
-                timer.invalidate(); log("等不到 ChatGPT 主窗口，放弃这次")
+                timer.invalidate(); self.releaseIfIdle(); log("等不到 ChatGPT 主窗口，放弃这次")
             }
+        }
+    }
+
+    @objc func appTerminated(_ n: Notification) {
+        guard let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              app.bundleIdentifier == targetBundleID else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, !self.targetRunning else { return }
+            self.waiting?.invalidate()
+            self.show?.teardown()
+            self.syncIcon(); self.releaseIfIdle()
         }
     }
 
@@ -869,8 +915,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var s: Show!
         let t0 = Date()
         s = Show(pid: pid, target: target, config: config, withIntro: withIntro,
-                 timeline: cache.get(withIntro: withIntro)) { [weak self] in
+                 timeline: ensureCache(withIntro: withIntro).get(withIntro: withIntro)) { [weak self] in
             if self?.show === s { self?.show = nil }
+            self?.refreshMenu(); self?.syncIcon(); self?.releaseIfIdle()
             if exitWhenDone { DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { exit(0) } }
         }
         show = s
