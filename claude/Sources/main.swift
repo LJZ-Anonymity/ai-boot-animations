@@ -316,6 +316,8 @@ final class Show {
     var endObserver: NSObjectProtocol?
     var lastTarget = -1
     var lastFrame = NSRect.zero
+    var sysAnim = false          // 窗口在做系统动画（最小化、还原、缩放、分屏）时浮层先藏起来
+    var stableSince = Date()
 
     init(pid: pid_t, target: TargetWindow, config: Config, withIntro: Bool,
          timeline: Timeline, onDone: @escaping () -> Void) {
@@ -422,8 +424,24 @@ final class Show {
         guard phase != .done else { return }
         guard let t = findClaudeWindow(pid: pid) else {
             if overlay.isVisible { overlay.orderOut(nil) }
+            sysAnim = true; stableSince = Date()   // 再出现时多半是从 Dock 还原的动画，等停稳再露面
             if NSRunningApplication(processIdentifier: pid) == nil { finish(fast: true) }
             return
+        }
+        // 位置大小变了、鼠标却没按着 = 系统在做动画（最小化、还原、缩放、分屏）。
+        // 最小化的神灯效果会把窗口拧成漏斗形，矩形视频怎么跟都对不上，干脆先藏起来；
+        // 用户自己拖动、拉伸窗口时鼠标是按着的，照常跟随
+        let mouseDown = NSEvent.pressedMouseButtons & 1 != 0
+        if t.cocoaFrame != lastFrame {
+            if !mouseDown && !sysAnim && overlay.isVisible { log("窗口在做系统动画，浮层先藏起来"); sysAnim = true }
+            if sysAnim { stableSince = Date(); lastFrame = t.cocoaFrame }
+        }
+        if sysAnim {
+            if overlay.isVisible { overlay.orderOut(nil) }
+            if Date().timeIntervalSince(stableSince) < 0.18 { return }   // 停稳 0.18 秒再回来
+            sysAnim = false
+            lastFrame = .zero   // 让 place 一定按最新位置重设一次
+            log("窗口停稳，浮层回来")
         }
         place(t)
         if !overlay.isVisible { overlay.orderFront(nil) }
