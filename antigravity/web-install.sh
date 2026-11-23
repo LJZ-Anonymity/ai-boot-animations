@@ -11,7 +11,7 @@ MAJOR=$(sw_vers -productVersion | cut -d. -f1)
 (( MAJOR >= 13 )) || { echo "需要 macOS 13 或更新，你的是 $(sw_vers -productVersion)"; exit 1; }
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-echo "⬇️  正在下载 Gemini 开机动画（约 80MB）…"
+echo "⬇️  正在下载 Gemini 开机动画（约 70MB）…"
 curl -fL --progress-bar -o "$TMP/pkg.zip" "$URL"
 ditto -x -k "$TMP/pkg.zip" "$TMP/pkg"
 zsh "$TMP/pkg/AntigravityBootAnimation/install.sh"
