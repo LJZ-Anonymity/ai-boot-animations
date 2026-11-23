@@ -6,6 +6,8 @@ Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 
 Remove-Item "$env:APPDATA\ClaudeBootAnimation" -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item "$env:LOCALAPPDATA\ClaudeBootAnimation" -Recurse -Force -ErrorAction SilentlyContinue
 $dest = "$env:LOCALAPPDATA\Programs\ClaudeBootAnimation"
+# 删掉启动时写的「用高性能显卡」偏好
+Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\DirectX\UserGpuPreferences' -Name "$dest\ClaudeBootAnimation.exe" -ErrorAction SilentlyContinue
 # 卸载脚本本身可能就在程序目录里，延后删
 Start-Process cmd.exe -ArgumentList "/c timeout /t 2 /nobreak >nul & rmdir /s /q `"$dest`"" -WindowStyle Hidden
 if (-not $Quiet) { Write-Host '已卸载干净。' }

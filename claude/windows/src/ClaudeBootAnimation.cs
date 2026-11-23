@@ -144,6 +144,48 @@ namespace ClaudeBootAnimation
 
     // ───────────────────────── 日志 ─────────────────────────
 
+    /// 双显卡笔记本上 Windows 默认让新程序用核显，播 4K 视频会掉帧。
+    /// 启动时检查有没有两块以上显卡：有，就在「设置 → 系统 → 显示 → 图形」里把本程序设为「高性能」（等同用户手动去选）。
+    /// 用户自己在那里选过（不管选了什么）就不再动；只有一块显卡什么都不做。卸载时 uninstall.ps1 会删掉这一项。
+    public static class GpuPref
+    {
+        const string Key = @"Software\Microsoft\DirectX\UserGpuPreferences";
+        public static void Ensure()
+        {
+            try
+            {
+                string exe = Process.GetCurrentProcess().MainModule.FileName;
+                using (var k = Registry.CurrentUser.CreateSubKey(Key))
+                {
+                    if (k == null) return;
+                    var cur = k.GetValue(exe) as string;
+                    if (cur != null) { Log.W("显卡偏好已有设置（" + cur + "），不改动"); return; }
+                    var gpus = ListGpus();
+                    if (gpus.Count < 2) { Log.W("显卡：" + (gpus.Count == 0 ? "未识别" : string.Join("、", gpus)) + "，不用切换独显"); return; }
+                    k.SetValue(exe, "GpuPreference=2;", RegistryValueKind.String);
+                    Log.W("检测到多块显卡（" + string.Join("、", gpus) + "），已设为用高性能显卡渲染");
+                }
+            }
+            catch (Exception ex) { Log.W("独显设置失败：" + ex.Message); }
+        }
+
+        /// 列出真实显卡（排除远程桌面、虚拟显示器这类假适配器）
+        static List<string> ListGpus()
+        {
+            var list = new List<string>();
+            using (var q = new System.Management.ManagementObjectSearcher("SELECT Name FROM Win32_VideoController"))
+            {
+                foreach (System.Management.ManagementBaseObject o in q.Get())
+                {
+                    var name = (o["Name"] as string ?? "").Trim();
+                    if (System.Text.RegularExpressions.Regex.IsMatch(name, "NVIDIA|GeForce|Quadro|RTX|AMD|Radeon|Intel|Arc", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                        list.Add(name);
+                }
+            }
+            return list;
+        }
+    }
+
     public static class Log
     {
         public static string FilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClaudeBootAnimation", "log.txt");
@@ -1426,6 +1468,7 @@ namespace ClaudeBootAnimation
         public static int Main(string[] args)
         {
             Native.SetProcessDPIAware();
+            GpuPref.Ensure();   // 要在 WPF 建立显卡渲染之前设好
             bool test = Array.IndexOf(args, "--target-title") >= 0 || Array.IndexOf(args, "--render-subtitle") >= 0;
             Mutex mutex = null;
             EventWaitHandle showEvent = null;

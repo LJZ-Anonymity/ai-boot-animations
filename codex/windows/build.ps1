@@ -10,7 +10,7 @@ $wpf = "$fw\WPF"
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $refs = @("$wpf\PresentationFramework.dll", "$wpf\PresentationCore.dll", "$wpf\WindowsBase.dll",
           "$fw\System.Xaml.dll", "$fw\System.Windows.Forms.dll", "$fw\System.Drawing.dll",
-          "$fw\System.Web.Extensions.dll", "$fw\System.Core.dll") | ForEach-Object { "/r:$_" }
+          "$fw\System.Web.Extensions.dll", "$fw\System.Core.dll", "$fw\System.Management.dll") | ForEach-Object { "/r:$_" }
 $cscArgs = @('/nologo', '/target:winexe', '/optimize+', '/codepage:65001', '/platform:anycpu', "/out:$Out\GPTBootAnimation.exe") + $refs + @("$PSScriptRoot\src\GPTBootAnimation.cs")
 & $csc @cscArgs
 if ($LASTEXITCODE -ne 0) { throw "编译失败" }
