@@ -56,6 +56,22 @@ jobs:
           $app = Start-Process build\GPTBootAnimation.exe -PassThru -ArgumentList "--target-title Notepad --play loop --exit-after 14 --shot-at 2,6,12 --shot-dir `"$pwd\out\loop`"" 
           $app | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue; $app | Stop-Process -Force -ErrorAction SilentlyContinue
           Stop-Process $np -Force
+      - name: 循环背景卡住后自愈（每 0.8 秒强制接缝，每 10 秒故意卡一次）
+        run: |
+          $log = "$env:LOCALAPPDATA\GPTBootAnimation\log.txt"
+          $before = @(Get-Content $log -Encoding UTF8 -ErrorAction SilentlyContinue).Count
+          $np = Start-Process notepad -WindowStyle Maximized -PassThru
+          Start-Sleep 3
+          $app = Start-Process build\GPTBootAnimation.exe -PassThru -ArgumentList "--target-title Notepad --play loop --exit-after 32 --loop-cut 0.8 --stall-test 10 --recycle-every 5 --heartbeat 4 --shot-at 9,16,30 --shot-dir `"$pwd\out\selfheal`""
+          $app | Wait-Process -Timeout 90 -ErrorAction SilentlyContinue; $app | Stop-Process -Force -ErrorAction SilentlyContinue
+          Stop-Process $np -Force
+          $new = @(@(Get-Content $log -Encoding UTF8 -ErrorAction SilentlyContinue) | Select-Object -Skip $before)
+          $new | ForEach-Object { Write-Host $_ }
+          # 日志里的中文用码位拼，免得脚本编码出岔子：「自动恢复（」「恢复成功」
+          $recover = [string]::Concat([char[]](0x81EA,0x52A8,0x6062,0x590D,0xFF08))
+          $healed = [string]::Concat([char[]](0x6062,0x590D,0x6210,0x529F))
+          if (-not ($new | Where-Object { $_.Contains($recover) })) { throw "self-heal test: no recovery in log" }
+          if (-not ($new | Where-Object { $_.Contains($healed) })) { throw "self-heal test: loop did not move again after recovery" }
       - name: 收集日志
         if: always()
         run: |

@@ -198,6 +198,10 @@ namespace ClaudeBootAnimation
         [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")] static extern IntPtr SetWindowLongPtr64(IntPtr h, int i, IntPtr v);
         [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);
         [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out int v, int size);
+        [DllImport("user32.dll")] public static extern IntPtr RegisterPowerSettingNotification(IntPtr h, ref Guid g, int flags);
+        [DllImport("user32.dll")] public static extern bool UnregisterPowerSettingNotification(IntPtr h);
+        /// 显示器亮 / 灭 / 变暗的通知
+        public static readonly Guid GUID_CONSOLE_DISPLAY_STATE = new Guid("6FE69556-704A-47A0-8F24-C28D936FDA47");
 
         public const int GWL_EXSTYLE = -20, GWLP_HWNDPARENT = -8;
         public const long WS_EX_TRANSPARENT = 0x20, WS_EX_TOOLWINDOW = 0x80, WS_EX_LAYERED = 0x80000, WS_EX_NOACTIVATE = 0x8000000, WS_EX_APPWINDOW = 0x40000;
@@ -320,6 +324,17 @@ namespace ClaudeBootAnimation
         }
     }
 
+    // ───────────────────────── 开发用参数（排查循环背景卡住）─────────────────────────
+
+    public static class Dev
+    {
+        public static double LoopCutSec = 0;    // --loop-cut 秒：循环段放到这里就提前换播放器，接缝次数成倍增加，几分钟跑完平时几小时的接缝
+        public static double StallTestSec = 0;  // --stall-test 秒：每隔这么久故意把正在放的播放器暂停，看自愈能不能接回来
+        public static int StallMs = 3000;       // 画面多久没动算卡住
+        public static int RecycleEvery = 10;    // --recycle-every 圈：每放这么多圈，把后台待命的播放器换成新的（0 = 不换）
+        public static double HeartbeatSec = 600; // --heartbeat 秒：循环背景每隔多久往日志里报一次平安
+    }
+
     // ───────────────────────── 一次播放 ─────────────────────────
 
     public class Show
@@ -338,7 +353,24 @@ namespace ClaudeBootAnimation
         int styleFixes;
         MediaElement intro, loopA, loopB, activeLoop;
         // 换播放器时：新的那个真正出帧之前，旧的一直盖在上面（不然机器忙的时候会闪黑）
-        MediaElement swapFrom, swapTo; DateTime swapT0;
+        MediaElement swapFrom, swapTo; DateTime swapT0; bool swapKicked;
+
+        // ── 循环背景自愈 ──
+        // 循环靠「放完 → 换另一个播放器接着放」一环扣一环，任何一环断了（没收到放完通知、新播放器没动起来、
+        // 锁屏 / 睡眠 / 显示器休眠后画面冻住）以前都会永远停在一帧。现在每 0.25 秒看一眼进度，卡住就重建播放器。
+        readonly Stopwatch clock = Stopwatch.StartNew();
+        long nextSampleMs, lastMoveMs, lastRecoverMs = -1, nextBeatMs, nextStallTestMs, pendingAt;
+        double lastPos = -1;
+        int laps, recoveries, failStreak, missedEnds;
+        bool verifying;
+        string pendingWhy;
+        MediaElement retiring; long retireT0;   // 重建时旧画面先盖着，新播放器动起来再撤
+        Dispatcher disp;
+        SessionSwitchEventHandler onSession;
+        EventHandler onDisplay;
+        IntPtr powerNotify;
+        int displayState = -1;
+
         SubtitleElement sub;
         Border skipBtn;
         DispatcherTimer tick;
@@ -359,12 +391,10 @@ namespace ClaudeBootAnimation
             Target = t; config = c; this.withIntro = withIntro; this.onDone = onDone;
 
             grid = new Grid { Background = withIntro ? Brushes.Black : Brushes.Transparent, ClipToBounds = true };
-            loopA = MakePlayer("loop.mp4", true);
-            loopB = MakePlayer("loop.mp4", true);
+            loopA = MakeLoopPlayer();
+            loopB = MakeLoopPlayer();
             Panel.SetZIndex(loopA, 1); Panel.SetZIndex(loopB, 0);
             grid.Children.Add(loopA); grid.Children.Add(loopB);
-            loopA.MediaEnded += delegate { SwapLoop(loopA, loopB); };
-            loopB.MediaEnded += delegate { SwapLoop(loopB, loopA); };
             activeLoop = loopA;
 
             if (withIntro)
@@ -394,6 +424,11 @@ namespace ClaudeBootAnimation
             {
                 overlayH = new WindowInteropHelper(overlay).Handle;
                 EnsureOverlayStyle(true);
+                // 收系统的睡眠唤醒、显示器亮灭通知（这两种之后视频画面最容易冻住）
+                var hs = HwndSource.FromHwnd(overlayH);
+                if (hs != null) hs.AddHook(WndProc);
+                try { Guid g = Native.GUID_CONSOLE_DISPLAY_STATE; powerNotify = Native.RegisterPowerSettingNotification(overlayH, ref g, 0); }
+                catch (Exception ex) { Log.W("显示器亮灭通知注册失败：" + ex.Message); }
                 // 设成 Claude 窗口的「附属窗口」：系统自动让它一直在 Claude 上面，Claude 被别的窗口挡住时它也一起被挡住
                 Native.SetLong(overlayH, Native.GWLP_HWNDPARENT, Target.Hwnd.ToInt64());
             };
@@ -441,9 +476,48 @@ namespace ClaudeBootAnimation
                 Log.W("直接开启循环背景，窗口 " + Target.Hwnd);
             }
 
+            // 解锁、远程桌面切回、换显示器 / 改分辨率之后，重建一次播放器
+            disp = Dispatcher.CurrentDispatcher;
+            onSession = delegate (object s, SessionSwitchEventArgs e)
+            {
+                var r = e.Reason;
+                if (r == SessionSwitchReason.SessionUnlock || r == SessionSwitchReason.ConsoleConnect || r == SessionSwitchReason.RemoteConnect)
+                    disp.BeginInvoke(new Action(delegate { LaterRebuild("解锁 / 切回桌面（" + r + "）"); }));
+            };
+            onDisplay = delegate { disp.BeginInvoke(new Action(delegate { LaterRebuild("显示器设置变了"); })); };
+            try { SystemEvents.SessionSwitch += onSession; SystemEvents.DisplaySettingsChanged += onDisplay; }
+            catch (Exception ex) { Log.W("系统事件订阅失败：" + ex.Message); }
+            nextBeatMs = (long)(Dev.HeartbeatSec * 1000);
+            nextStallTestMs = (long)(Dev.StallTestSec * 1000);
+
             tick = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(15) };
             tick.Tick += delegate { Tick(); };
             tick.Start();
+        }
+
+        IntPtr WndProc(IntPtr h, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg != 0x218 /*WM_POWERBROADCAST*/) return IntPtr.Zero;
+            try
+            {
+                long ev = wParam.ToInt64();
+                if (ev == 0x7 /*PBT_APMRESUMESUSPEND*/ || ev == 0x12 /*PBT_APMRESUMEAUTOMATIC*/) LaterRebuild("电脑从睡眠中唤醒");
+                else if (ev == 0x8013 /*PBT_POWERSETTINGCHANGE*/ && lParam != IntPtr.Zero)
+                {
+                    // POWERBROADCAST_SETTING：16 字节 GUID + 4 字节长度 + 数据（0 灭、1 亮、2 变暗）
+                    var g = (Guid)Marshal.PtrToStructure(lParam, typeof(Guid));
+                    if (g == Native.GUID_CONSOLE_DISPLAY_STATE)
+                    {
+                        int state = Marshal.ReadInt32(lParam, 20);
+                        // 刚注册时系统会先报一次当前状态，那次不算；只有从灭 / 暗变成亮才重建
+                        if (state == 1 && displayState >= 0 && displayState != 1) LaterRebuild("显示器重新亮起");
+                        if (state != displayState && displayState >= 0) Log.W("显示器状态 " + displayState + " → " + state);
+                        displayState = state;
+                    }
+                }
+            }
+            catch (Exception ex) { Log.W("电源通知处理出错：" + ex.Message); }
+            return IntPtr.Zero;
         }
 
         static string RectStr(Native.RECT r) { return "(" + r.Left + "," + r.Top + " " + (r.Right - r.Left) + "x" + (r.Bottom - r.Top) + ")"; }
@@ -470,6 +544,40 @@ namespace ClaudeBootAnimation
             return m;
         }
 
+        MediaElement MakeLoopPlayer()
+        {
+            var m = MakePlayer("loop.mp4", true);
+            m.MediaEnded += OnLoopEnded;
+            m.MediaFailed += OnLoopFailed;
+            return m;
+        }
+
+        MediaElement OtherLoop(MediaElement m) { return m == loopA ? loopB : loopA; }
+
+        void OnLoopEnded(object s, RoutedEventArgs e)
+        {
+            var m = s as MediaElement;
+            if (m == null || m != activeLoop || phase == Phase.Done) return; // 已经换下去的、或已经重建掉的旧播放器，不理它
+            SwapLoop(m, OtherLoop(m));
+        }
+
+        void OnLoopFailed(object s, ExceptionRoutedEventArgs e)
+        {
+            if (s != loopA && s != loopB) return;
+            Log.W("循环背景播放器报错：" + (e.ErrorException != null ? e.ErrorException.Message : "未知"));
+            LaterRebuild("播放器报错", 500);
+        }
+
+        /// 关掉一个播放器并从画面里拿走
+        void DisposePlayer(MediaElement m)
+        {
+            if (m == null) return;
+            m.MediaEnded -= OnLoopEnded;
+            m.MediaFailed -= OnLoopFailed;
+            try { m.Stop(); m.Close(); } catch { }
+            grid.Children.Remove(m);
+        }
+
         /// 两个播放器轮流放循环段：一个放完，另一个已经停在第一帧，马上接上
         void SwapLoop(MediaElement done, MediaElement next)
         {
@@ -482,15 +590,22 @@ namespace ClaudeBootAnimation
         void BeginSwap(MediaElement from, MediaElement to)
         {
             if (swapFrom != null && swapFrom != from) FinishSwap();
-            swapFrom = from; swapTo = to; swapT0 = DateTime.Now;
+            swapFrom = from; swapTo = to; swapT0 = DateTime.Now; swapKicked = false;
         }
 
-        // 每帧检查：新播放器的进度走起来了（画面已经出来），才把旧的撤掉
+        // 每帧检查：新播放器的进度走起来了（画面已经出来），才把旧的撤掉。
+        // 以前等 1.5 秒没动也照样换上去——换上去的是个没在放的播放器，它永远不会「放完」，循环就此停住。
+        // 现在没动就再催一次 Play，旧画面继续盖着；还不动交给自愈去重建。
         void CheckSwap()
         {
             if (swapFrom == null) return;
-            bool moving = swapTo.Position.TotalSeconds > 0.06;
-            if (moving || (DateTime.Now - swapT0).TotalSeconds > 1.5) FinishSwap();
+            if (swapTo.Position.TotalSeconds > 0.06) { FinishSwap(); return; }
+            if (!swapKicked && (DateTime.Now - swapT0).TotalSeconds > 1.5)
+            {
+                swapKicked = true;
+                Log.W("接缝：新播放器 1.5 秒还没动，再催一次（第 " + laps + " 圈）");
+                swapTo.Play();
+            }
         }
 
         void FinishSwap()
@@ -504,7 +619,123 @@ namespace ClaudeBootAnimation
                 return;
             }
             Panel.SetZIndex(to, 1); Panel.SetZIndex(from, 0);
-            from.Pause(); from.Position = TimeSpan.Zero; // 退回第一帧备用（ScrubbingEnabled 让它暂停时也解出这一帧）
+            laps++;
+            if (Dev.RecycleEvery > 0 && laps % Dev.RecycleEvery == 0) ReplaceStandby(from);
+            else { from.Pause(); from.Position = TimeSpan.Zero; } // 退回第一帧备用（ScrubbingEnabled 让它暂停时也解出这一帧）
+        }
+
+        /// 后台待命的那个播放器定期换成新的：同一个播放器暂停、倒回、再放成百上千次，不让它一直用下去。
+        /// 它此刻垫在下面看不见，换掉不影响画面；新的自己会停在第一帧等着
+        void ReplaceStandby(MediaElement old)
+        {
+            var fresh = MakeLoopPlayer();
+            Panel.SetZIndex(fresh, 0);
+            grid.Children.Add(fresh);
+            if (old == loopA) loopA = fresh; else loopB = fresh;
+            DisposePlayer(old);
+        }
+
+        // ── 自愈 ──
+
+        /// 过一会儿再重建（系统刚唤醒、刚解锁时显卡可能还没缓过来）。连着来好几次只算最后一次
+        void LaterRebuild(string why) { LaterRebuild(why, 2000); }
+        void LaterRebuild(string why, int delayMs)
+        {
+            if (phase == Phase.Done) return;
+            pendingWhy = why;
+            pendingAt = clock.ElapsedMilliseconds + delayMs;
+        }
+
+        /// 把两个循环播放器都换成新的。旧的正在显示的那个先盖着，新的动起来再撤，不闪黑
+        void RebuildLoops(string why)
+        {
+            if (phase == Phase.Done || phase == Phase.Ending) return;
+            long now = clock.ElapsedMilliseconds;
+            recoveries++; lastRecoverMs = now;
+            double p = -1;
+            try { if (activeLoop != null) p = activeLoop.Position.TotalSeconds; } catch { }
+            Log.W("循环背景自动恢复（" + why + "）：第 " + recoveries + " 次，已循环 " + laps + " 圈，当时进度 " + p.ToString("0.00", CultureInfo.InvariantCulture) + " 秒");
+            if (swapFrom != null && swapFrom == intro) FinishSwap(); // 开屏还盖着就收掉
+            // 正在接缝的话，屏幕上看到的是还盖着的旧播放器，留它盖着
+            var old = swapFrom != null ? swapFrom : activeLoop;
+            swapFrom = null; swapTo = null;
+            DisposePlayer(retiring); retiring = null;
+            if (loopA != old) DisposePlayer(loopA);
+            if (loopB != old) DisposePlayer(loopB);
+            if (old != null)
+            {
+                old.MediaEnded -= OnLoopEnded; old.MediaFailed -= OnLoopFailed;
+                Panel.SetZIndex(old, 3);
+                retiring = old; retireT0 = now;
+            }
+            loopA = MakeLoopPlayer();
+            loopB = MakeLoopPlayer();
+            Panel.SetZIndex(loopA, 1); Panel.SetZIndex(loopB, 0);
+            grid.Children.Add(loopA); grid.Children.Add(loopB);
+            activeLoop = loopA; // MakePlayer 里已经 Play 了；activeLoop 是它，打开后不会被停在第一帧
+            verifying = true;
+            lastMoveMs = now; lastPos = -1;
+        }
+
+        void CheckRetire(long now)
+        {
+            if (retiring == null) return;
+            if (activeLoop.Position.TotalSeconds > 0.06 || now - retireT0 > 2500) { DisposePlayer(retiring); retiring = null; }
+        }
+
+        /// 每 0.25 秒看一眼正在放的循环段进度有没有往前走
+        void Watchdog(long now)
+        {
+            if (now < nextSampleMs) return;
+            nextSampleMs = now + 250;
+            if (phase != Phase.Revealed || !introGone || hidden || activeLoop == null)
+            {
+                lastMoveMs = now; lastPos = -1; // 藏着、还在开屏时不算；回来后重新计时
+                return;
+            }
+            double p = activeLoop.Position.TotalSeconds;
+            if (now >= nextBeatMs)
+            {
+                nextBeatMs = now + (long)(Math.Max(1, Dev.HeartbeatSec) * 1000);
+                Log.W("循环背景运行中：已循环 " + laps + " 圈，自动恢复 " + recoveries + " 次，进度 " + p.ToString("0.00", CultureInfo.InvariantCulture) + " 秒");
+            }
+            if (Math.Abs(p - lastPos) > 0.0005)
+            {
+                lastPos = p; lastMoveMs = now;
+                if (verifying && p > 0.3) { verifying = false; failStreak = 0; Log.W("恢复成功：循环背景又动起来了"); }
+                return;
+            }
+            long stuck = now - lastMoveMs;
+            // 停在最后一帧却没收到「放完」通知：直接手动接到另一个播放器，跟正常接缝一样无缝
+            if (stuck >= 400 && swapFrom == null && activeLoop.NaturalDuration.HasTimeSpan
+                && p >= activeLoop.NaturalDuration.TimeSpan.TotalSeconds - 0.08)
+            {
+                missedEnds++;
+                if (missedEnds <= 20 || missedEnds % 100 == 0) Log.W("循环段放到头没收到放完通知，手动接上（第 " + missedEnds + " 次）");
+                SwapLoop(activeLoop, OtherLoop(activeLoop));
+                lastMoveMs = now; lastPos = -1;
+                return;
+            }
+            if (stuck < Dev.StallMs) return;
+            // 连着修不好（比如显示器关着）就放慢：前三次隔 8 秒，之后隔 1 分钟
+            long gap = failStreak < 3 ? 8000 : 60000;
+            if (lastRecoverMs >= 0 && now - lastRecoverMs < gap) return;
+            failStreak++;
+            RebuildLoops("画面 " + (stuck / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " 秒没动");
+        }
+
+        /// 开发用：提前换播放器（--loop-cut）、故意制造卡住（--stall-test）
+        void DevHooks(long now)
+        {
+            if (phase != Phase.Revealed || !introGone || activeLoop == null) return;
+            if (Dev.LoopCutSec > 0 && swapFrom == null && activeLoop.Position.TotalSeconds >= Dev.LoopCutSec)
+                SwapLoop(activeLoop, OtherLoop(activeLoop));
+            if (Dev.StallTestSec > 0 && now >= nextStallTestMs)
+            {
+                nextStallTestMs = now + (long)(Dev.StallTestSec * 1000);
+                Log.W("测试：故意把正在放的循环播放器暂停，等自愈接回来");
+                activeLoop.Pause();
+            }
         }
 
         void IntroEnded()
@@ -532,6 +763,15 @@ namespace ClaudeBootAnimation
             if (phase == Phase.Done) return;
             EnsureOverlayStyle(false);
             CheckSwap();
+            long now = clock.ElapsedMilliseconds;
+            CheckRetire(now);
+            DevHooks(now);
+            if (pendingAt > 0 && now >= pendingAt && !hidden && phase == Phase.Revealed && introGone)
+            {
+                pendingAt = 0;
+                RebuildLoops(pendingWhy);
+            }
+            Watchdog(now);
 
             if (!introGone && intro != null)
             {
@@ -714,7 +954,9 @@ namespace ClaudeBootAnimation
             if (phase == Phase.Done) return;
             phase = Phase.Done;
             if (tick != null) tick.Stop();
-            foreach (var m in new[] { intro, loopA, loopB })
+            try { SystemEvents.SessionSwitch -= onSession; SystemEvents.DisplaySettingsChanged -= onDisplay; } catch { }
+            if (powerNotify != IntPtr.Zero) { try { Native.UnregisterPowerSettingNotification(powerNotify); } catch { } powerNotify = IntPtr.Zero; }
+            foreach (var m in new[] { intro, loopA, loopB, retiring })
                 if (m != null) { try { m.Stop(); m.Close(); } catch { } }
             CloseTop();
             try { overlay.Close(); } catch { }
@@ -860,6 +1102,11 @@ namespace ClaudeBootAnimation
             return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
         }
         bool Has(string name) { return Array.IndexOf(args, name) >= 0; }
+        double ArgD(string name, double def)
+        {
+            double v; var s = Arg(name);
+            return s != null && double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out v) ? v : def;
+        }
 
         protected override void OnStartup(StartupEventArgs e)
         {
@@ -868,6 +1115,10 @@ namespace ClaudeBootAnimation
             LoadFont();
             Finder.TestTitle = Arg("--target-title");
             testMode = Finder.TestTitle != null;
+            Dev.LoopCutSec = ArgD("--loop-cut", Dev.LoopCutSec);
+            Dev.StallTestSec = ArgD("--stall-test", Dev.StallTestSec);
+            Dev.RecycleEvery = (int)ArgD("--recycle-every", Dev.RecycleEvery);
+            Dev.HeartbeatSec = ArgD("--heartbeat", Dev.HeartbeatSec);
             Log.W("启动 " + string.Join(" ", args) + "  程序目录 " + AppDomain.CurrentDomain.BaseDirectory);
 
             if (Arg("--render-subtitle") != null) { RenderSubtitleTest(); return; }
