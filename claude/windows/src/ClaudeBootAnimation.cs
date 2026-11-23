@@ -359,7 +359,7 @@ namespace ClaudeBootAnimation
         // 循环靠「放完 → 换另一个播放器接着放」一环扣一环，任何一环断了（没收到放完通知、新播放器没动起来、
         // 锁屏 / 睡眠 / 显示器休眠后画面冻住）以前都会永远停在一帧。现在每 0.25 秒看一眼进度，卡住就重建播放器。
         readonly Stopwatch clock = Stopwatch.StartNew();
-        long nextSampleMs, lastMoveMs, lastRecoverMs = -1, nextBeatMs, nextStallTestMs, pendingAt;
+        long nextSampleMs, lastSampleMs, lastMoveMs, lastRecoverMs = -1, nextBeatMs, nextStallTestMs, pendingAt;
         double lastPos = -1;
         int laps, recoveries, failStreak, missedEnds;
         bool verifying;
@@ -647,10 +647,15 @@ namespace ClaudeBootAnimation
         }
 
         /// 把两个循环播放器都换成新的。旧的正在显示的那个先盖着，新的动起来再撤，不闪黑
-        void RebuildLoops(string why)
+        /// 不管是谁要求的重建（卡住、报错、解锁唤醒），都走这同一道门：连着修不好就放慢，
+        /// 前三次隔 8 秒，之后隔 1 分钟（比如显示器关着、或者这台电脑根本解不了这个视频），返回 false 表示这次先不重建
+        bool RebuildLoops(string why)
         {
-            if (phase == Phase.Done || phase == Phase.Ending) return;
+            if (phase == Phase.Done || phase == Phase.Ending) return true;
             long now = clock.ElapsedMilliseconds;
+            long gap = failStreak < 3 ? 8000 : 60000;
+            if (lastRecoverMs >= 0 && now - lastRecoverMs < gap) return false;
+            failStreak++;
             recoveries++; lastRecoverMs = now;
             double p = -1;
             try { if (activeLoop != null) p = activeLoop.Position.TotalSeconds; } catch { }
@@ -675,6 +680,7 @@ namespace ClaudeBootAnimation
             activeLoop = loopA; // MakePlayer 里已经 Play 了；activeLoop 是它，打开后不会被停在第一帧
             verifying = true;
             lastMoveMs = now; lastPos = -1;
+            return true;
         }
 
         void CheckRetire(long now)
@@ -688,7 +694,9 @@ namespace ClaudeBootAnimation
         {
             if (now < nextSampleMs) return;
             nextSampleMs = now + 250;
-            if (phase != Phase.Revealed || !introGone || hidden || activeLoop == null)
+            bool timerGap = lastSampleMs > 0 && now - lastSampleMs > 2000; // 电脑睡眠、整个程序卡住时计时器没跑，那段不算画面卡住
+            lastSampleMs = now;
+            if (timerGap || phase != Phase.Revealed || !introGone || hidden || activeLoop == null)
             {
                 lastMoveMs = now; lastPos = -1; // 藏着、还在开屏时不算；回来后重新计时
                 return;
@@ -697,7 +705,9 @@ namespace ClaudeBootAnimation
             if (now >= nextBeatMs)
             {
                 nextBeatMs = now + (long)(Math.Max(1, Dev.HeartbeatSec) * 1000);
-                Log.W("循环背景运行中：已循环 " + laps + " 圈，自动恢复 " + recoveries + " 次，进度 " + p.ToString("0.00", CultureInfo.InvariantCulture) + " 秒");
+                string mem = "";
+                try { using (var pr = Process.GetCurrentProcess()) mem = "，内存 " + (pr.WorkingSet64 / 1048576) + "MB，句柄 " + pr.HandleCount; } catch { }
+                Log.W("循环背景运行中：已循环 " + laps + " 圈，自动恢复 " + recoveries + " 次，进度 " + p.ToString("0.00", CultureInfo.InvariantCulture) + " 秒" + mem);
             }
             if (Math.Abs(p - lastPos) > 0.0005)
             {
@@ -717,10 +727,6 @@ namespace ClaudeBootAnimation
                 return;
             }
             if (stuck < Dev.StallMs) return;
-            // 连着修不好（比如显示器关着）就放慢：前三次隔 8 秒，之后隔 1 分钟
-            long gap = failStreak < 3 ? 8000 : 60000;
-            if (lastRecoverMs >= 0 && now - lastRecoverMs < gap) return;
-            failStreak++;
             RebuildLoops("画面 " + (stuck / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " 秒没动");
         }
 
@@ -768,8 +774,7 @@ namespace ClaudeBootAnimation
             DevHooks(now);
             if (pendingAt > 0 && now >= pendingAt && !hidden && phase == Phase.Revealed && introGone)
             {
-                pendingAt = 0;
-                RebuildLoops(pendingWhy);
+                pendingAt = RebuildLoops(pendingWhy) ? 0 : now + 1000; // 被退避挡住就过一秒再问
             }
             Watchdog(now);
 
