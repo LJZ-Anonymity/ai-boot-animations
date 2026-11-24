@@ -16,7 +16,8 @@ Remove-Item "$env:LOCALAPPDATA\$name" -Recurse -Force -ErrorAction SilentlyConti
 Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\DirectX\UserGpuPreferences' -Name "$dest\$name.exe" -ErrorAction SilentlyContinue
 # 卸载脚本本身可能就在程序目录里，延后删；上一级 AIBootAnimations 空了也顺手删掉（里面还有别的动画就不动）
 $parent = Split-Path $dest -Parent
-$cmd = "/c timeout /t 2 /nobreak >nul & rmdir /s /q `"$dest`""
+if ((Split-Path $dest -Leaf) -eq $name) { $cmd = "/c timeout /t 2 /nobreak >nul & rmdir /s /q `"$dest`"" }
+else { $cmd = "/c timeout /t 2 /nobreak >nul & del /f /q `"$dest\$name.exe`" `"$dest\uninstall.ps1`" & rmdir /s /q `"$dest\assets`" & rmdir `"$dest`" 2>nul" }   # 用户自己挑的文件夹：只删我们的文件
 if ((Split-Path $parent -Leaf) -eq 'AIBootAnimations') { $cmd += " & rmdir `"$parent`" 2>nul" }
 Start-Process cmd.exe -ArgumentList $cmd -WindowStyle Hidden
 if (-not $Quiet) { Write-Host "已卸载干净（$dest）。" }

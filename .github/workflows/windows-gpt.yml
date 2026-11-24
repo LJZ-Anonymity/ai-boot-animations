@@ -48,6 +48,17 @@ jobs:
           if (-not (Test-Path $exe)) { throw "install: exe missing" }
           if ($exe.StartsWith($env:SystemDrive, [StringComparison]::OrdinalIgnoreCase)) { throw "install: landed on system drive: $exe" }
           if (Test-Path $oldDir) { throw "install: old C: copy still there: $oldDir" }
+          # 再装一次：这回假装旧版在用户自己挑的文件夹里，旁边还有别的文件——只许删我们的文件
+          Get-Process GPTBootAnimation -ErrorAction SilentlyContinue | Stop-Process -Force
+          $mine = "$env:TEMP\MyApps"
+          New-Item -ItemType Directory -Force "$mine\assets" | Out-Null; Set-Content "$mine\GPTBootAnimation.exe" 'old'; Set-Content "$mine\keep.txt" 'user file'
+          Set-ItemProperty $run -Name GPTBootAnimation -Value "`"$mine\GPTBootAnimation.exe`""
+          powershell -ExecutionPolicy Bypass -File codex\windows\install.ps1
+          Start-Sleep 3
+          Get-Process GPTBootAnimation -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not (Test-Path "$mine\keep.txt")) { throw "install: deleted user's file in custom folder" }
+          if (Test-Path "$mine\GPTBootAnimation.exe") { throw "install: old exe in custom folder not removed" }
+          $exe = ((Get-ItemProperty $run -Name GPTBootAnimation).GPTBootAnimation).Trim('"'); $dir = Split-Path $exe -Parent
           powershell -ExecutionPolicy Bypass -File "$dir\uninstall.ps1"
           Start-Sleep 5
           if (Test-Path $dir) { throw "uninstall: folder still there: $dir" }

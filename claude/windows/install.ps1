@@ -15,6 +15,13 @@ if (-not $Dir) {
 }
 if (-not (Test-Writable $Dir)) { throw "装不进 $Dir（没有写入权限）" }
 $dest = Join-Path $Dir $name
+# 只删我们自己的东西：文件夹名就是程序名才整个删；别的文件夹（用户自己挑的、里面可能有别的东西）只删我们放进去的文件，删完空了再删文件夹
+function Remove-OurInstall([string]$d) {
+  if (-not $d -or -not (Test-Path "$d\$name.exe")) { return }
+  if ((Split-Path $d -Leaf) -eq $name) { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue; return }
+  foreach ($f in @("$name.exe", 'assets', 'uninstall.ps1')) { Remove-Item (Join-Path $d $f) -Recurse -Force -ErrorAction SilentlyContinue }
+  if (-not (Get-ChildItem $d -Force -ErrorAction SilentlyContinue)) { Remove-Item $d -Force -ErrorAction SilentlyContinue }
+}
 Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 500
 # 以前装在别处（比如老版本装在 C 盘）：先删掉旧的，免得留两份
@@ -25,7 +32,8 @@ if ($old) {
   $oldDir = Split-Path ($old.Trim('"')) -Parent
   if ($oldDir -and ($oldDir.TrimEnd('\') -ne $dest.TrimEnd('\')) -and (Test-Path "$oldDir\$name.exe")) {
     Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\DirectX\UserGpuPreferences' -Name "$oldDir\$name.exe" -ErrorAction SilentlyContinue
-    Remove-Item $oldDir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-OurInstall $oldDir
+    Write-Host "已清掉旧版（$oldDir）"
   }
 }
 if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
