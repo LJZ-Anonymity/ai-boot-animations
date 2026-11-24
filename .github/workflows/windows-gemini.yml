@@ -1,0 +1,145 @@
+# Gemini（Antigravity）开机动画 Windows 版自动编译 + 自测：编译、离屏渲染字幕、对着记事本窗口播放并截图
+name: windows-gemini-test
+on:
+  push:
+    branches: [windows-gemini]
+    paths: ['antigravity/windows/**', '.github/workflows/windows-gemini.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+      - name: 视频转 H.264
+        run: |
+          choco install ffmpeg -y --no-progress | Out-Null
+          $env:Path += ";C:\ProgramData\chocolatey\bin"
+          ffmpeg -v error -y -i antigravity\assets\intro.mp4 -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -c:a copy antigravity\windows\assets\intro.mp4
+          ffmpeg -v error -y -i antigravity\assets\loop.mp4 -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -an antigravity\windows\assets\loop.mp4
+          ffmpeg -v error -y -stream_loop 1 -i antigravity\assets\loop.mp4 -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -an antigravity\windows\assets\loop-x2.mp4
+          Get-ChildItem antigravity\windows\assets
+      - name: 媒体组件（服务器版 Windows 默认没装）
+        continue-on-error: true
+        run: |
+          Install-WindowsFeature Server-Media-Foundation | Format-List
+      - name: 编译
+        run: powershell -ExecutionPolicy Bypass -File antigravity\windows\build.ps1 -Out "$pwd\build"
+      - name: 准备输出目录
+        run: New-Item -ItemType Directory -Force out | Out-Null
+      - name: 对着记事本播放开屏（完整）
+        run: |
+          $np = Start-Process notepad -WindowStyle Maximized -PassThru
+          Start-Sleep 3
+          $app = Start-Process build\AntigravityBootAnimation.exe -PassThru -ArgumentList "--target-title Notepad --play intro --exit-after 32 --shot-at 1,5,9,12,14,16,22,26.5,30 --shot-dir `"$pwd\out\intro`"" 
+          $app | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue; $app | Stop-Process -Force -ErrorAction SilentlyContinue
+          Stop-Process $np -Force
+      - name: 跳过开屏
+        run: |
+          $np = Start-Process notepad -WindowStyle Maximized -PassThru
+          Start-Sleep 3
+          $app = Start-Process build\AntigravityBootAnimation.exe -PassThru -ArgumentList "--target-title Notepad --play intro --test-skip 3 --exit-after 8 --shot-at 2.5,3.4,4.5,7 --shot-dir `"$pwd\out\skip`"" 
+          $app | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue; $app | Stop-Process -Force -ErrorAction SilentlyContinue
+          Stop-Process $np -Force
+      - name: 只开循环背景
+        run: |
+          $np = Start-Process notepad -WindowStyle Maximized -PassThru
+          Start-Sleep 3
+          $app = Start-Process build\AntigravityBootAnimation.exe -PassThru -ArgumentList "--target-title Notepad --play loop --exit-after 14 --shot-at 2,6,12 --shot-dir `"$pwd\out\loop`"" 
+          $app | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue; $app | Stop-Process -Force -ErrorAction SilentlyContinue
+          Stop-Process $np -Force
+      - name: 循环背景卡住后自愈（每 0.8 秒强制接缝，每 10 秒故意卡一次）
+        run: |
+          $log = "$env:LOCALAPPDATA\AntigravityBootAnimation\log.txt"
+          $before = @(Get-Content $log -Encoding UTF8 -ErrorAction SilentlyContinue).Count
+          $np = Start-Process notepad -WindowStyle Maximized -PassThru
+          Start-Sleep 3
+          $app = Start-Process build\AntigravityBootAnimation.exe -PassThru -ArgumentList "--target-title Notepad --play loop --exit-after 32 --legacy-loop --loop-cut 0.8 --stall-test 10 --recycle-every 5 --heartbeat 4 --shot-at 9,16,30 --shot-dir `"$pwd\out\selfheal`""
+          $app | Wait-Process -Timeout 90 -ErrorAction SilentlyContinue; $app | Stop-Process -Force -ErrorAction SilentlyContinue
+          Stop-Process $np -Force
+          $new = @(@(Get-Content $log -Encoding UTF8 -ErrorAction SilentlyContinue) | Select-Object -Skip $before)
+          $new | ForEach-Object { Write-Host $_ }
+          # 日志里的中文用码位拼，免得脚本编码出岔子：「自动恢复（」「恢复成功」
+          $recover = [string]::Concat([char[]](0x81EA,0x52A8,0x6062,0x590D,0xFF08))
+          $healed = [string]::Concat([char[]](0x6062,0x590D,0x6210,0x529F))
+          if (-not ($new | Where-Object { $_.Contains($recover) })) { throw "self-heal test: no recovery in log" }
+          if (-not ($new | Where-Object { $_.Contains($healed) })) { throw "self-heal test: loop did not move again after recovery" }
+      - name: 闪屏检测（录屏逐帧看亮度突变：老办法接缝 / 重叠交接 / 开屏接循环 / 卡住重建）
+        run: |
+          $env:Path += ";C:\ProgramData\chocolatey\bin"
+          $cfgDir = "$env:APPDATA\AntigravityBootAnimation"
+          New-Item -ItemType Directory -Force $cfgDir, out\seam | Out-Null
+          $cfgBak = "$cfgDir\config.json.bak"
+          if (Test-Path "$cfgDir\config.json") { Copy-Item "$cfgDir\config.json" $cfgBak -Force }
+          # 背景调成完全不透明：漏一帧就会露出记事本的白底，亮度一下跳很多
+          Set-Content "$cfgDir\config.json" '{ "residualAlpha" : 1.0 }' -Encoding UTF8
+          # mode = name, play, extra args, wait before recording, record seconds
+          $modes = @(
+            @('legacy',  'loop',  ' --legacy-loop', 4, 26),
+            @('overlap', 'loop',  ' --recycle-every 2', 4, 26),
+            @('intro',   'intro', '', 18, 26),
+            @('rebuild', 'loop',  ' --stall-test 9', 4, 26)
+          )
+          foreach ($m in $modes) {
+            $mode = $m[0]
+            $np = Start-Process notepad -WindowStyle Maximized -PassThru
+            Start-Sleep 3
+            $exitAfter = $m[3] + $m[4] + 4
+            $app = Start-Process build\AntigravityBootAnimation.exe -PassThru -ArgumentList ("--target-title Notepad --play " + $m[1] + " --exit-after " + $exitAfter + $m[2])
+            Start-Sleep $m[3]
+            $rec = Start-Process ffmpeg -PassThru -NoNewWindow -ArgumentList "-v error -y -f gdigrab -framerate 60 -t $($m[4]) -i desktop -vf scale=320:-1 -c:v libx264 -preset ultrafast -crf 18 out\seam\$mode.mp4"
+            $rec | Wait-Process -Timeout 90 -ErrorAction SilentlyContinue
+            $app | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue; $app | Stop-Process -Force -ErrorAction SilentlyContinue
+            Stop-Process $np -Force -ErrorAction SilentlyContinue
+            ffmpeg -v error -i out\seam\$mode.mp4 -vf "signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=out/seam/$mode-yavg.txt" -f null -
+            $t = $null; $prev = $null; $rows = @()
+            foreach ($line in Get-Content "out\seam\$mode-yavg.txt") {
+              if ($line -match 'pts_time:([0-9.]+)') { $t = [double]$matches[1] }
+              elseif ($line -match 'YAVG=([0-9.]+)') {
+                $y = [double]$matches[1]
+                if ($prev -ne $null -and [Math]::Abs($y - $prev) -gt 3) { $rows += ('t={0:N3}s  {1:N1} -> {2:N1}' -f $t, $prev, $y) }
+                $prev = $y
+              }
+            }
+            # 字符串里别写中文：Windows PowerShell 5.1 按 ANSI 读脚本，中文会把引号吃掉
+            "[$mode] frames with brightness jump > 3: $($rows.Count)" | Tee-Object -Append out\seam\summary.txt
+            $rows | Select-Object -First 40 | Tee-Object -Append out\seam\summary.txt
+            Remove-Item out\seam\$mode.mp4 -ErrorAction SilentlyContinue   # 录屏不推到仓库，只留数据
+          }
+          if (Test-Path $cfgBak) { Move-Item $cfgBak "$cfgDir\config.json" -Force } else { Remove-Item "$cfgDir\config.json" -ErrorAction SilentlyContinue }
+      - name: 收集日志
+        if: always()
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item "$env:LOCALAPPDATA\AntigravityBootAnimation\log.txt" out\ -ErrorAction SilentlyContinue
+          Get-Content out\log.txt -ErrorAction SilentlyContinue
+      - name: 截图压成小 JPG，推到 ci-results 分支
+        if: always()
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $codec = [Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
+          $ep = New-Object Drawing.Imaging.EncoderParameters 1
+          $ep.Param[0] = New-Object Drawing.Imaging.EncoderParameter ([Drawing.Imaging.Encoder]::Quality), 70L
+          Get-ChildItem out -Recurse -Filter *.png | ForEach-Object {
+            $img = [Drawing.Image]::FromFile($_.FullName)
+            $w = [Math]::Min(960, $img.Width); $h = [int]($img.Height * $w / $img.Width)
+            $bmp = New-Object Drawing.Bitmap $img, $w, $h
+            $bmp.Save(($_.FullName -replace '\.png$', '.jpg'), $codec, $ep)
+            $bmp.Dispose(); $img.Dispose(); Remove-Item $_.FullName
+          }
+          $dir = "ci-results/gemini-${{ github.run_number }}"
+          git config user.name "ci"; git config user.email "ci@users.noreply.github.com"
+          $ErrorActionPreference = "Continue"
+          git fetch -q origin ci-results
+          if ($LASTEXITCODE -eq 0) { git checkout -q -B ci-results origin/ci-results } else { git checkout -q --orphan ci-results; git rm -rq --cached . 2>$null }
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item out\* $dir -Recurse -Force
+          git add $dir
+          git commit -q -m "CI gemini-${{ github.run_number }}"
+          git push -q origin ci-results
+          Write-Host "results: $dir"
