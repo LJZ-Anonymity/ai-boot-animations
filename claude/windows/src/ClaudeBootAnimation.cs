@@ -396,6 +396,15 @@ namespace ClaudeBootAnimation
         MediaElement intro, loopA, loopB, activeLoop;
         // 换播放器时：新的那个真正出帧之前，旧的一直盖在上面（不然机器忙的时候会闪黑）
         MediaElement swapFrom, swapTo; DateTime swapT0; bool swapKicked;
+        // 重叠交接：loop-x2.mp4 是循环段连放两遍，前后两半画面一模一样。
+        // 正在放的播放器走到中点（第二遍开头）时，另一个从头开始放，两个同时放着同样的画面；
+        // 新的稳稳走起来后再换到上面、旧的倒回开头待命。谁都放不到文件末尾，也就没有「放完再接」那一下闪。
+        public static bool ForceLegacyLoop;   // 测试用：--legacy-loop 强制老办法
+        bool overlapLoop;
+        string loopFile = "loop.mp4";
+        MediaElement handFrom, handTo; DateTime handT0;
+        double handLead;                      // 新播放器起步慢多少秒，下次提前这么多开播（自动学）
+        int handoffs;
 
         // ── 循环背景自愈 ──
         // 循环靠「放完 → 换另一个播放器接着放」一环扣一环，任何一环断了（没收到放完通知、新播放器没动起来、
@@ -433,6 +442,13 @@ namespace ClaudeBootAnimation
             Target = t; config = c; this.withIntro = withIntro; this.onDone = onDone;
 
             grid = new Grid { Background = withIntro ? Brushes.Black : Brushes.Transparent, ClipToBounds = true };
+            // 有 loop-x2.mp4（循环段连放两遍）就用「重叠交接」；
+            // 用户放了自己的 loop.mp4（比 loop-x2.mp4 新）或只有 loop.mp4，就用老办法，免得换的视频被无视
+            string x2 = Asset("loop-x2.mp4"), single = Asset("loop.mp4");
+            overlapLoop = !ForceLegacyLoop && File.Exists(x2)
+                && !(File.Exists(single) && File.GetLastWriteTimeUtc(single) > File.GetLastWriteTimeUtc(x2).AddSeconds(2));
+            loopFile = overlapLoop ? "loop-x2.mp4" : "loop.mp4";
+            Log.W(overlapLoop ? "循环段：重叠交接（loop-x2.mp4）" : "循环段：放完再接（loop.mp4）");
             loopA = MakeLoopPlayer();
             loopB = MakeLoopPlayer();
             Panel.SetZIndex(loopA, 1); Panel.SetZIndex(loopB, 0);
@@ -460,7 +476,7 @@ namespace ClaudeBootAnimation
                 Left = -32000, Top = -32000, Width = 10, Height = 10, Title = "Claude Boot Animation"
             };
             clickThrough = !withIntro;
-            alpha = withIntro ? 1 : 0;
+            alpha = 0; // 开屏也从透明淡入（0.3 秒），不再一出现就整块黑屏盖上去
             grid.Opacity = alpha;
             overlay.SourceInitialized += delegate
             {
@@ -508,6 +524,7 @@ namespace ClaudeBootAnimation
             if (withIntro)
             {
                 intro.Play();
+                RampAlpha(1, 0.3, null);
                 Log.W("开始播放开屏动画，窗口 " + Target.Hwnd + " " + RectStr(lastRect));
             }
             else
@@ -624,6 +641,7 @@ namespace ClaudeBootAnimation
         void SwapLoop(MediaElement done, MediaElement next)
         {
             if (phase == Phase.Done) return;
+            handFrom = null; handTo = null; // 重叠交接没赶上、退回老办法时，交接状态作废
             next.Play();
             activeLoop = next;
             BeginSwap(done, next); // done 停在最后一帧盖着，等 next 动起来再换上去
@@ -641,7 +659,7 @@ namespace ClaudeBootAnimation
         void CheckSwap()
         {
             if (swapFrom == null) return;
-            if (swapTo.Position.TotalSeconds > 0.06) { FinishSwap(); return; }
+            if (swapTo.Position.TotalSeconds > (swapFrom == intro ? 0.15 : 0.06)) { FinishSwap(); return; }
             if (!swapKicked && (DateTime.Now - swapT0).TotalSeconds > 1.5)
             {
                 swapKicked = true;
@@ -660,10 +678,52 @@ namespace ClaudeBootAnimation
                 intro.Stop(); intro.Close();
                 return;
             }
+            Promote(from, to);
+        }
+
+        /// to 换到上面成为正在放的，from 退回第一帧待命（每隔几圈换成新的）
+        void Promote(MediaElement from, MediaElement to)
+        {
             Panel.SetZIndex(to, 1); Panel.SetZIndex(from, 0);
+            activeLoop = to;
             laps++;
             if (Dev.RecycleEvery > 0 && laps % Dev.RecycleEvery == 0) ReplaceStandby(from);
             else { from.Pause(); from.Position = TimeSpan.Zero; } // 退回第一帧备用（ScrubbingEnabled 让它暂停时也解出这一帧）
+        }
+
+        // 每帧检查重叠交接（只在有 loop-x2.mp4 时）
+        void CheckHandoff()
+        {
+            if (!overlapLoop || phase == Phase.Done || !introGone || swapFrom != null || activeLoop == null) return;
+            if (handFrom != null && handFrom != activeLoop) { handFrom = null; handTo = null; } // 被重建 / 老办法接走了
+            var cur = activeLoop;
+            if (!cur.NaturalDuration.HasTimeSpan) return;
+            double dur = cur.NaturalDuration.TimeSpan.TotalSeconds, half = dur / 2;
+            double pos = cur.Position.TotalSeconds;
+
+            if (handTo == null)
+            {
+                if (pos < 0.05 || pos < half - handLead) return;
+                var next = OtherLoop(cur);
+                next.Position = TimeSpan.Zero;
+                next.Play();
+                handFrom = cur; handTo = next; handT0 = DateTime.Now;
+                return;
+            }
+
+            // 新的走过 0.5 秒（画面肯定已经出来了），旧的还在第二遍里，此时两边画面相同，换上去看不出来。
+            // 新的一直没走起来就不换，旧的放到头会走「放完再接」的老路，那时新的已经在放了
+            double toPos = handTo.Position.TotalSeconds;
+            if (toPos < 0.5) return;
+            double fromPos = handFrom.Position.TotalSeconds;
+            double offset = (fromPos - half) - toPos;   // 正数 = 新的比旧的慢
+            handLead = Math.Max(0, Math.Min(0.5, handLead + offset));
+            var from = handFrom; var to = handTo;
+            handFrom = null; handTo = null;
+            Promote(from, to);
+            handoffs++;
+            if (handoffs <= 5 || handoffs % 200 == 0)
+                Log.W("循环交接（第 " + handoffs + " 次）：错位 " + Math.Round(offset * 1000) + "ms，下次提前 " + Math.Round(handLead * 1000) + "ms");
         }
 
         /// 后台待命的那个播放器定期换成新的：同一个播放器暂停、倒回、再放成百上千次，不让它一直用下去。
@@ -703,10 +763,12 @@ namespace ClaudeBootAnimation
             try { if (activeLoop != null) p = activeLoop.Position.TotalSeconds; } catch { }
             Log.W("循环背景自动恢复（" + why + "）：第 " + recoveries + " 次，已循环 " + laps + " 圈，当时进度 " + p.ToString("0.00", CultureInfo.InvariantCulture) + " 秒");
             if (swapFrom != null && swapFrom == intro) FinishSwap(); // 开屏还盖着就收掉
-            // 正在接缝的话，屏幕上看到的是还盖着的旧播放器，留它盖着
-            var old = swapFrom != null ? swapFrom : activeLoop;
-            swapFrom = null; swapTo = null;
-            DisposePlayer(retiring); retiring = null;
+            // 正在接缝的话，屏幕上看到的是还盖着的旧播放器，留它盖着；
+            // 上一次重建的新播放器还没动起来、旧画面还盖着的话，屏幕上看到的是那个旧画面，继续让它盖着
+            var old = retiring != null ? retiring : swapFrom != null ? swapFrom : activeLoop;
+            swapFrom = null; swapTo = null; handFrom = null; handTo = null;
+            if (retiring != null && retiring != old) DisposePlayer(retiring);
+            retiring = null;
             if (loopA != old) DisposePlayer(loopA);
             if (loopB != old) DisposePlayer(loopB);
             if (old != null)
@@ -728,7 +790,8 @@ namespace ClaudeBootAnimation
         void CheckRetire(long now)
         {
             if (retiring == null) return;
-            if (activeLoop.Position.TotalSeconds > 0.06 || now - retireT0 > 2500) { DisposePlayer(retiring); retiring = null; }
+            // 新播放器走过 0.3 秒（画面肯定出来了）才撤旧画面。以前 2.5 秒没动也照撤，撤完就是一块空白，闪一下
+            if (activeLoop.Position.TotalSeconds > 0.3 || now - retireT0 > 20000) { DisposePlayer(retiring); retiring = null; }
         }
 
         /// 每 0.25 秒看一眼正在放的循环段进度有没有往前走
@@ -776,7 +839,7 @@ namespace ClaudeBootAnimation
         void DevHooks(long now)
         {
             if (phase != Phase.Revealed || !introGone || activeLoop == null) return;
-            if (Dev.LoopCutSec > 0 && swapFrom == null && activeLoop.Position.TotalSeconds >= Dev.LoopCutSec)
+            if (Dev.LoopCutSec > 0 && !overlapLoop && swapFrom == null && activeLoop.Position.TotalSeconds >= Dev.LoopCutSec)
                 SwapLoop(activeLoop, OtherLoop(activeLoop));
             if (Dev.StallTestSec > 0 && now >= nextStallTestMs)
             {
@@ -811,6 +874,7 @@ namespace ClaudeBootAnimation
             if (phase == Phase.Done) return;
             EnsureOverlayStyle(false);
             CheckSwap();
+            CheckHandoff();
             long now = clock.ElapsedMilliseconds;
             CheckRetire(now);
             DevHooks(now);
@@ -855,7 +919,12 @@ namespace ClaudeBootAnimation
                 if (!hidden) { hidden = true; ShowAll(false); }
                 return;
             }
-            if (hidden) { hidden = false; ShowAll(true); force = true; }
+            if (hidden)
+            {
+                hidden = false; ShowAll(true); force = true;
+                // 循环背景阶段：先透明再 0.35 秒淡回去，盖住 Claude 还原动画和视频层刚恢复时的那一下
+                if (phase == Phase.Revealed && alphaDur < 0) { SetAlpha(0); RampAlpha(config.ResidualAlpha, 0.35, null); }
+            }
             Native.RECT r;
             if (!Native.Bounds(Target.Hwnd, out r)) return;
             if (!force && r.Left == lastRect.Left && r.Top == lastRect.Top && r.Right == lastRect.Right && r.Bottom == lastRect.Bottom) return;
@@ -1158,6 +1227,7 @@ namespace ClaudeBootAnimation
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+            Show.ForceLegacyLoop = Has("--legacy-loop");
             Config = Config.Load();
             LoadFont();
             Finder.TestTitle = Arg("--target-title");
