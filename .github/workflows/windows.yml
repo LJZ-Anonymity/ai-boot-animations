@@ -86,7 +86,7 @@ jobs:
           $modes = @(
             @('legacy',  'loop',  ' --legacy-loop', 4, 26),
             @('overlap', 'loop',  ' --recycle-every 2', 4, 26),
-            @('intro',   'intro', '', 17, 14),
+            @('intro',   'intro', '', 18, 26),
             @('rebuild', 'loop',  ' --stall-test 9', 4, 26)
           )
           foreach ($m in $modes) {

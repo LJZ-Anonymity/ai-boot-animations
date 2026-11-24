@@ -596,7 +596,7 @@ namespace ClaudeBootAnimation
                 m.MediaOpened += delegate
                 {
                     if (primed) return; primed = true;
-                    if (m != activeLoop || phase == Phase.Intro) { m.Pause(); m.Position = TimeSpan.Zero; }
+                    if ((m != activeLoop && m != handTo) || phase == Phase.Intro) { m.Pause(); m.Position = TimeSpan.Zero; }
                 };
                 m.Play();
             }
