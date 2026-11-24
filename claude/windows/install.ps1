@@ -19,10 +19,14 @@ $dest = Join-Path $Dir $name
 function Remove-OurInstall([string]$d) {
   if (-not $d -or -not (Test-Path "$d\$name.exe")) { return }
   if ((Split-Path $d -Leaf) -eq $name) { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue; return }
-  foreach ($f in @("$name.exe", 'assets', 'uninstall.ps1')) { Remove-Item (Join-Path $d $f) -Recurse -Force -ErrorAction SilentlyContinue }
+  foreach ($f in @("$name.exe", 'assets', 'uninstall.ps1')) {
+    # 刚关掉的程序，Windows 可能还要一会儿才放开文件：删不掉就等一下再试
+    for ($i = 0; $i -lt 10 -and (Test-Path (Join-Path $d $f)); $i++) { Remove-Item (Join-Path $d $f) -Recurse -Force -ErrorAction SilentlyContinue; if (Test-Path (Join-Path $d $f)) { Start-Sleep -Milliseconds 500 } }
+  }
   if (-not (Get-ChildItem $d -Force -ErrorAction SilentlyContinue)) { Remove-Item $d -Force -ErrorAction SilentlyContinue }
 }
 Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process $name -ErrorAction SilentlyContinue | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
 # 以前装在别处（比如老版本装在 C 盘）：先删掉旧的，免得留两份
 $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
