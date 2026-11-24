@@ -425,8 +425,20 @@ final class Show {
         tick = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.follow() }
         RunLoop.main.add(tick!, forMode: .common)   // 拖动菜单、窗口时也继续跟随
         activateObs = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in self?.follow() }
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] n in
+            let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            // 别的 App 到前台：它的窗口可能马上盖到 ChatGPT 上，窗口列表要晚几十毫秒才反映出来，先立刻降回普通层级，免得浮层压在它上面
+            if let self, let app, app.processIdentifier != self.pid, app.processIdentifier != getpid() {
+                self.lastOtherActivation = Date()
+                if self.overlay.level != .normal {
+                    for w in [self.overlay, self.subWin, self.skipWin] { w.level = .normal }
+                    if self.lastTarget >= 0 { self.overlay.order(.above, relativeTo: self.lastTarget) }
+                }
+            }
+            self?.follow()
+        }
     }
+    var lastOtherActivation = Date.distantPast
 
     func place(_ t: TargetWindow) {
         if t.cocoaFrame != lastFrame {
@@ -464,15 +476,20 @@ final class Show {
         }
         place(t)
         if overlay.isVisible && !overlay.isOnActiveSpace { overlay.orderOut(nil) }   // 目标窗口被挪到别的桌面：重新显示一次，浮层才会跟过去
-        if !overlay.isVisible { overlay.orderFront(nil) }
-        // ChatGPT 在前台、窗口也没被别的 App 压着：浮层放到浮动层级，ChatGPT 点击时把自己窗口提上来也盖不过它（否则会被挡住一瞬间，视频层重画时闪黑）
-        // 其他情况（ChatGPT 不在前台，或在前台但窗口被别的 App 压着）：降回普通层级，紧贴在 ChatGPT 窗口上方，不会盖住别的 App
-        let targetFront = NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
-        let level: NSWindow.Level = targetFront && !t.coveredByOtherApp ? .floating : .normal
+        // ChatGPT 窗口没被别的 App 压着（不管 ChatGPT 在不在前台）：浮层放到浮动层级，点 ChatGPT 时它把自己窗口提上来也盖不过浮层
+        //   （以前只在 ChatGPT 在前台时才升，别的 App 最小化后再点 ChatGPT，ChatGPT 会先盖过浮层一两帧，看着就是闪黑）
+        // 被别的 App 压着：降回普通层级，紧贴在 ChatGPT 窗口上方，不会盖住别的 App（这种情况点 ChatGPT 仍可能轻微闪一下：ChatGPT 提窗口比外部程序快，抢不过）
+        let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1
+        // 别的 App 刚到前台的 0.3 秒内先不升（它的窗口可能正要盖上来，窗口列表还没反映）；ChatGPT 自己在前台不受限
+        let otherJustActivated = frontPID != pid && Date().timeIntervalSince(lastOtherActivation) < 0.3
+        let level: NSWindow.Level = !t.coveredByOtherApp && !otherJustActivated ? .floating : .normal
+        // 先把层级定好再显示，直接排到最终位置，不经过「先到最前面、再退回 ChatGPT 上方」的中间状态
         if overlay.level != level {
             for w in [overlay, subWin, skipWin] { w.level = level }
         }
+        let wasVisible = overlay.isVisible
         if level == .normal { overlay.order(.above, relativeTo: t.number) }
+        else if !wasVisible { overlay.orderFront(nil) }
         if t.number != lastTarget { lastTarget = t.number; log("跟随窗口 \(t.number)") }
     }
 
