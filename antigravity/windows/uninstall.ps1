@@ -3,7 +3,7 @@ param([switch]$Quiet)
 $name = 'AntigravityBootAnimation'
 Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 800
-# 程序装在哪：看开机自启登记的路径；没有就看本脚本所在目录；再没有就是老默认位置
+# 程序装在哪：看开机自启登记的路径；没有就看本脚本所在目录；再没有就是老默认位置（C 盘）
 $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $reg = (Get-ItemProperty -Path $run -Name $name -ErrorAction SilentlyContinue).$name
 $dest = $null

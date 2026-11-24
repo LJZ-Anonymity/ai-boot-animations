@@ -30,6 +30,28 @@ jobs:
           Install-WindowsFeature Server-Media-Foundation | Format-List
       - name: 编译
         run: powershell -ExecutionPolicy Bypass -File claude\windows\build.ps1 -Out "$pwd\build"
+      - name: 安装位置测试（装到非系统盘；老版本在 C 盘的要被清掉；卸载要删干净）
+        run: |
+          Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Format-Table DeviceID, @{n='FreeGB';e={[int]($_.FreeSpace/1GB)}}
+          $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          # 假装装过老版本：C 盘老位置放个 exe，开机自启指向它
+          $oldDir = "$env:LOCALAPPDATA\Programs\ClaudeBootAnimation"
+          New-Item -ItemType Directory -Force $oldDir | Out-Null; Set-Content "$oldDir\ClaudeBootAnimation.exe" 'old'
+          Set-ItemProperty $run -Name ClaudeBootAnimation -Value "`"$oldDir\ClaudeBootAnimation.exe`""
+          powershell -ExecutionPolicy Bypass -File claude\windows\install.ps1
+          Start-Sleep 3
+          Get-Process ClaudeBootAnimation -ErrorAction SilentlyContinue | Stop-Process -Force
+          $reg = (Get-ItemProperty $run -Name ClaudeBootAnimation).ClaudeBootAnimation
+          Write-Host "Run key: $reg"
+          $exe = $reg.Trim('"'); $dir = Split-Path $exe -Parent
+          if (-not (Test-Path $exe)) { throw "install: exe missing" }
+          if ($exe.StartsWith($env:SystemDrive, [StringComparison]::OrdinalIgnoreCase)) { throw "install: landed on system drive: $exe" }
+          if (Test-Path $oldDir) { throw "install: old C: copy still there: $oldDir" }
+          powershell -ExecutionPolicy Bypass -File "$dir\uninstall.ps1"
+          Start-Sleep 5
+          if (Test-Path $dir) { throw "uninstall: folder still there: $dir" }
+          if (Get-ItemProperty $run -Name ClaudeBootAnimation -ErrorAction SilentlyContinue) { throw "uninstall: Run key still there" }
+          Write-Host "install/uninstall OK: $dir (old C: copy removed)"
       - name: 离屏渲染字幕
         run: |
           New-Item -ItemType Directory -Force out | Out-Null

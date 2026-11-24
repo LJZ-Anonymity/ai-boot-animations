@@ -9,8 +9,7 @@ function Test-Writable([string]$p) {
 }
 if (-not $Dir) { $Dir = $env:AGBA_DIR }
 if (-not $Dir) {
-  $sys = $env:SystemDrive
-  $disks = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' -ErrorAction SilentlyContinue | Where-Object { $_.DeviceID -ne $sys -and $_.FreeSpace -gt 1GB } | Sort-Object FreeSpace -Descending)
+  $disks = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' -ErrorAction SilentlyContinue | Where-Object { $_.DeviceID -ne $env:SystemDrive -and $_.FreeSpace -gt 1GB } | Sort-Object FreeSpace -Descending)
   foreach ($d in $disks) { $p = "$($d.DeviceID)\AIBootAnimations"; if (Test-Writable $p) { $Dir = $p; break } }
   if (-not $Dir) { $Dir = "$env:LOCALAPPDATA\Programs" }
 }
@@ -18,12 +17,15 @@ if (-not (Test-Writable $Dir)) { throw "装不进 $Dir（没有写入权限）" 
 $dest = Join-Path $Dir $name
 Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 500
-# 以前装在别处（比如老版本在 C 盘）：先删掉旧的，免得留两份
+# 以前装在别处（比如老版本装在 C 盘）：先删掉旧的，免得留两份
 $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $old = (Get-ItemProperty -Path $run -Name $name -ErrorAction SilentlyContinue).$name
 if ($old) {
   $oldDir = Split-Path ($old.Trim('"')) -Parent
-  if ($oldDir -and ($oldDir.TrimEnd('\') -ne $dest.TrimEnd('\')) -and (Test-Path "$oldDir\$name.exe")) { Remove-Item $oldDir -Recurse -Force -ErrorAction SilentlyContinue }
+  if ($oldDir -and ($oldDir.TrimEnd('\') -ne $dest.TrimEnd('\')) -and (Test-Path "$oldDir\$name.exe")) {
+    Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\DirectX\UserGpuPreferences' -Name "$oldDir\$name.exe" -ErrorAction SilentlyContinue
+    Remove-Item $oldDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
 }
 if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
 & "$PSScriptRoot\build.ps1" -Out $dest

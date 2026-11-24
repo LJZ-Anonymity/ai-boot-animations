@@ -25,7 +25,13 @@ try {
   Write-Host "Downloading Gemini Boot Animation (~50 MB) -> $dir ..."
   Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile "$tmp\pkg.zip"
   Expand-Archive -Path "$tmp\pkg.zip" -DestinationPath "$tmp\pkg" -Force
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$tmp\pkg\AntigravityBootAnimation-Windows\install.ps1" -Dir $dir
+  $inst = "$tmp\pkg\AntigravityBootAnimation-Windows\install.ps1"
+  # Older packages' install.ps1 has no -Dir parameter (they always install to C:)
+  if ((Get-Content $inst -Raw) -match '\[string\]\$Dir') {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $inst -Dir $dir
+  } else {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $inst
+  }
 } finally {
   Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }
