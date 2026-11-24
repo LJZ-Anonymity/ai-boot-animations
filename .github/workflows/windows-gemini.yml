@@ -30,6 +30,22 @@ jobs:
           Install-WindowsFeature Server-Media-Foundation | Format-List
       - name: 编译
         run: powershell -ExecutionPolicy Bypass -File antigravity\windows\build.ps1 -Out "$pwd\build"
+      - name: 安装位置测试（要装到非系统盘，卸载要删干净）
+        run: |
+          Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Format-Table DeviceID, @{n='FreeGB';e={[int]($_.FreeSpace/1GB)}}
+          powershell -ExecutionPolicy Bypass -File antigravity\windows\install.ps1
+          Start-Sleep 3
+          Get-Process AntigravityBootAnimation -ErrorAction SilentlyContinue | Stop-Process -Force
+          $reg = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name AntigravityBootAnimation).AntigravityBootAnimation
+          Write-Host "Run key: $reg"
+          $exe = $reg.Trim('"'); $dir = Split-Path $exe -Parent
+          if (-not (Test-Path $exe)) { throw "install: exe missing" }
+          if ($exe.StartsWith($env:SystemDrive, [StringComparison]::OrdinalIgnoreCase)) { throw "install: landed on system drive: $exe" }
+          powershell -ExecutionPolicy Bypass -File "$dir\uninstall.ps1"
+          Start-Sleep 5
+          if (Test-Path $dir) { throw "uninstall: folder still there: $dir" }
+          if (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name AntigravityBootAnimation -ErrorAction SilentlyContinue) { throw "uninstall: Run key still there" }
+          Write-Host "install/uninstall OK: $dir"
       - name: 准备输出目录
         run: New-Item -ItemType Directory -Force out | Out-Null
       - name: 对着记事本播放开屏（完整）
