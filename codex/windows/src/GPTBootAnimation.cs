@@ -712,10 +712,10 @@ namespace GPTBootAnimation
                 return;
             }
 
-            // 新的走过 0.5 秒（画面肯定已经出来了），旧的还在第二遍里，此时两边画面相同，换上去看不出来。
+            // 新的走过 0.8 秒（画面肯定已经稳了），旧的还在第二遍里，此时两边画面相同，换上去看不出来。
             // 新的一直没走起来就不换，旧的放到头会走「放完再接」的老路，那时新的已经在放了
             double toPos = handTo.Position.TotalSeconds;
-            if (toPos < 0.5) return;
+            if (toPos < 0.8) return;
             double fromPos = handFrom.Position.TotalSeconds;
             double offset = (fromPos - half) - toPos;   // 正数 = 新的比旧的慢
             handLead = Math.Max(0, Math.Min(0.5, handLead + offset));
@@ -791,8 +791,13 @@ namespace GPTBootAnimation
         void CheckRetire(long now)
         {
             if (retiring == null) return;
-            // 新播放器走过 0.3 秒（画面肯定出来了）才撤旧画面。以前 2.5 秒没动也照撤，撤完就是一块空白，闪一下
-            if (activeLoop.Position.TotalSeconds > 0.3 || now - retireT0 > 20000) { DisposePlayer(retiring); retiring = null; }
+            // 新播放器稳稳走过 1 秒才撤旧画面，而且 0.25 秒淡出、不是一下拿掉。
+            // 云端实测：新播放器进度刚过 0.3 秒时画面还会黑一两帧，那时撤掉旧画面就闪黑；以前 2.5 秒没动也照撤，撤完是一块空白
+            if (activeLoop.Position.TotalSeconds < 1.0 && now - retireT0 < 20000) return;
+            var r = retiring; retiring = null;
+            var fade = new DoubleAnimation(0, TimeSpan.FromSeconds(0.25));
+            fade.Completed += delegate { DisposePlayer(r); };
+            r.BeginAnimation(UIElement.OpacityProperty, fade);
         }
 
         /// 每 0.25 秒看一眼正在放的循环段进度有没有往前走
