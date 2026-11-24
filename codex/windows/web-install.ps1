@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 # Shares the repo with the Claude version (which owns releases/latest), so pin the GPT tag here. Bump together with codex/web-install.sh.
-$tag = 'gpt-v1.2.4'
+$tag = 'gpt-v1.2.5'
 $url = "https://github.com/wynneceles/ai-boot-animations/releases/download/$tag/GPTBootAnimation-Windows.zip"
 if ($env:GBA_ZIP_URL) { $url = $env:GBA_ZIP_URL }
 function Test-Writable([string]$p) {
@@ -22,7 +22,7 @@ if (-not $dir) {
 $tmp = Join-Path $dir ('.gba-' + [guid]::NewGuid().ToString('N'))
 if (-not (Test-Writable $tmp)) { $tmp = Join-Path $env:TEMP ('gba-' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Force -Path $tmp | Out-Null }
 try {
-  Write-Host "Downloading GPT Boot Animation (~35 MB) -> $dir ..."
+  Write-Host "Downloading GPT Boot Animation (~49 MB) -> $dir ..."
   Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile "$tmp\pkg.zip"
   Expand-Archive -Path "$tmp\pkg.zip" -DestinationPath "$tmp\pkg" -Force
   $inst = "$tmp\pkg\GPTBootAnimation-Windows\install.ps1"

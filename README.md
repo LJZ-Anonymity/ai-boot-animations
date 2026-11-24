@@ -51,7 +51,7 @@ cd ai-boot-animations/claude
 
 打不开 raw.githubusercontent.com 的话，把网址换成 `https://cdn.jsdelivr.net/gh/wynneceles/ai-boot-animations@main/claude/windows/web-install.ps1`。
 
-会下载约 37MB，用 Windows 自带的编译器现场编译（不用装任何 SDK），装到**剩余空间最大的非系统盘**（例如 `D:\AIBootAnimations\ClaudeBootAnimation`，只有 C 盘时才装 C 盘；想自己指定位置，先运行 `$env:CBA_DIR='E:\某个文件夹'` 再粘贴安装命令），右下角托盘出现 ✨ 并弹出设置窗口。
+会下载约 48MB，用 Windows 自带的编译器现场编译（不用装任何 SDK），装到**剩余空间最大的非系统盘**（例如 `D:\AIBootAnimations\ClaudeBootAnimation`，只有 C 盘时才装 C 盘；想自己指定位置，先运行 `$env:CBA_DIR='E:\某个文件夹'` 再粘贴安装命令），右下角托盘出现 ✨ 并弹出设置窗口。
 
 ## 菜单栏 ✨ 能干什么
 

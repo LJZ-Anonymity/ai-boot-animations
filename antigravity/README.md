@@ -51,7 +51,7 @@ cd ai-boot-animations/antigravity
 
 打不开 raw.githubusercontent.com 的话，把网址换成 `https://cdn.jsdelivr.net/gh/wynneceles/ai-boot-animations@main/antigravity/windows/web-install.ps1`。
 
-会下载约 50MB，用 Windows 自带的编译器现场编译（不用装任何 SDK），装到**剩余空间最大的非系统盘**（例如 `D:\AIBootAnimations\AntigravityBootAnimation`，只有 C 盘时才装 C 盘；想自己指定位置，先运行 `$env:AGBA_DIR='E:\某个文件夹'` 再粘贴安装命令），右下角托盘出现蓝紫色四芒星图标并弹出设置窗口。打开 Antigravity（窗口进程 `Antigravity.exe`）时自动播放。和 Claude、GPT 版可以同时装。卸载：托盘四芒星图标右键 →「卸载 Gemini 开机动画…」。
+会下载约 49MB，用 Windows 自带的编译器现场编译（不用装任何 SDK），装到**剩余空间最大的非系统盘**（例如 `D:\AIBootAnimations\AntigravityBootAnimation`，只有 C 盘时才装 C 盘；想自己指定位置，先运行 `$env:AGBA_DIR='E:\某个文件夹'` 再粘贴安装命令），右下角托盘出现蓝紫色四芒星图标并弹出设置窗口。打开 Antigravity（窗口进程 `Antigravity.exe`）时自动播放。和 Claude、GPT 版可以同时装。卸载：托盘四芒星图标右键 →「卸载 Gemini 开机动画…」。
 
 设置文件：`%APPDATA%\AntigravityBootAnimation\config.json`；日志：`%LOCALAPPDATA%\AntigravityBootAnimation\log.txt`。
 

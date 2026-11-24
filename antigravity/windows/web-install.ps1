@@ -22,7 +22,7 @@ if (-not $dir) {
 $tmp = Join-Path $dir ('.agba-' + [guid]::NewGuid().ToString('N'))
 if (-not (Test-Writable $tmp)) { $tmp = Join-Path $env:TEMP ('agba-' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Force -Path $tmp | Out-Null }
 try {
-  Write-Host "Downloading Gemini Boot Animation (~50 MB) -> $dir ..."
+  Write-Host "Downloading Gemini Boot Animation (~49 MB) -> $dir ..."
   Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile "$tmp\pkg.zip"
   Expand-Archive -Path "$tmp\pkg.zip" -DestinationPath "$tmp\pkg" -Force
   $inst = "$tmp\pkg\AntigravityBootAnimation-Windows\install.ps1"

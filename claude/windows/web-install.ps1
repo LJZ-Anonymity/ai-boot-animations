@@ -20,7 +20,7 @@ if (-not $dir) {
 $tmp = Join-Path $dir ('.cba-' + [guid]::NewGuid().ToString('N'))
 if (-not (Test-Writable $tmp)) { $tmp = Join-Path $env:TEMP ('cba-' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Force -Path $tmp | Out-Null }
 try {
-  Write-Host "Downloading Claude Boot Animation (~37 MB) -> $dir ..."
+  Write-Host "Downloading Claude Boot Animation (~48 MB) -> $dir ..."
   Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile "$tmp\pkg.zip"
   Expand-Archive -Path "$tmp\pkg.zip" -DestinationPath "$tmp\pkg" -Force
   $inst = "$tmp\pkg\ClaudeBootAnimation-Windows\install.ps1"

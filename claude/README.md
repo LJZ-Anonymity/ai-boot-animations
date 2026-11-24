@@ -50,7 +50,7 @@ cd ai-boot-animations/claude
 
 打不开 raw.githubusercontent.com 的话，把网址换成 `https://cdn.jsdelivr.net/gh/wynneceles/ai-boot-animations@main/claude/windows/web-install.ps1`。
 
-会下载约 37MB，用 Windows 自带的编译器现场编译（不用装任何 SDK），装到**剩余空间最大的非系统盘**（例如 `D:\AIBootAnimations\ClaudeBootAnimation`，只有 C 盘时才装 C 盘；想自己指定位置，先运行 `$env:CBA_DIR='E:\某个文件夹'` 再粘贴安装命令），右下角托盘出现 ✨ 并弹出设置窗口。托盘图标右键能调的东西和 Mac 菜单栏一样，Windows 11 会自动把它设成常显。
+会下载约 48MB，用 Windows 自带的编译器现场编译（不用装任何 SDK），装到**剩余空间最大的非系统盘**（例如 `D:\AIBootAnimations\ClaudeBootAnimation`，只有 C 盘时才装 C 盘；想自己指定位置，先运行 `$env:CBA_DIR='E:\某个文件夹'` 再粘贴安装命令），右下角托盘出现 ✨ 并弹出设置窗口。托盘图标右键能调的东西和 Mac 菜单栏一样，Windows 11 会自动把它设成常显。
 
 从源码装：下载仓库，在 `claude\windows` 里运行 `powershell -ExecutionPolicy Bypass -File install.ps1`。
 
