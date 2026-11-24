@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 # Shares the repo with the Claude version (which owns releases/latest), so pin the GPT tag here. Bump together with codex/web-install.sh.
-$tag = 'gpt-v1.2.3'
+$tag = 'gpt-v1.2.4'
 $url = "https://github.com/wynneceles/ai-boot-animations/releases/download/$tag/GPTBootAnimation-Windows.zip"
 if ($env:GBA_ZIP_URL) { $url = $env:GBA_ZIP_URL }
 $tmp = Join-Path $env:TEMP ('gba-' + [guid]::NewGuid().ToString('N'))
