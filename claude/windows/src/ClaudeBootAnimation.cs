@@ -605,7 +605,7 @@ namespace ClaudeBootAnimation
 
         MediaElement MakeLoopPlayer()
         {
-            var m = MakePlayer("loop.mp4", true);
+            var m = MakePlayer(loopFile, true);
             m.MediaEnded += OnLoopEnded;
             m.MediaFailed += OnLoopFailed;
             return m;
