@@ -19,6 +19,7 @@ Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 500
 # 以前装在别处（比如老版本装在 C 盘）：先删掉旧的，免得留两份
 $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+if (-not (Test-Path $run)) { New-Item -Path $run -Force | Out-Null }   # 有的电脑上这个键本来不存在
 $old = (Get-ItemProperty -Path $run -Name $name -ErrorAction SilentlyContinue).$name
 if ($old) {
   $oldDir = Split-Path ($old.Trim('"')) -Parent

@@ -34,6 +34,7 @@ jobs:
         run: |
           Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Format-Table DeviceID, @{n='FreeGB';e={[int]($_.FreeSpace/1GB)}}
           $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          if (-not (Test-Path $run)) { New-Item -Path $run -Force | Out-Null }
           # 假装装过老版本：C 盘老位置放个 exe，开机自启指向它
           $oldDir = "$env:LOCALAPPDATA\Programs\GPTBootAnimation"
           New-Item -ItemType Directory -Force $oldDir | Out-Null; Set-Content "$oldDir\GPTBootAnimation.exe" 'old'
